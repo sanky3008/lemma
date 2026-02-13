@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app:*)",
+      "Bash(npx shadcn@latest init:*)",
+      "mcp__plate__get_add_command_for_items",
+      "Bash(npx shadcn@latest add:*)",
+      "mcp__plate__get_audit_checklist",
+      "Bash(npx next build:*)",
+      "Bash(npm install:*)"
+    ]
+  }
+}
