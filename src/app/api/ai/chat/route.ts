@@ -34,7 +34,7 @@ export async function POST(req: Request) {
     context?.allDocs ?? [];
 
   const result = streamText({
-    model: openai('gpt-4.1'),
+model: openai('gpt-5.1'),
     system: systemPrompt,
     messages: modelMessages,
     stopWhen: stepCountIs(10),
@@ -131,15 +131,15 @@ export async function POST(req: Request) {
       }),
 
       editDocument: tool({
-        description: `Edit a document in the user's workspace. Three modes:
+        description: `Edit the active document or create a new document. You can ONLY edit the document the user is currently viewing. Two modes:
 - "single": Edit a single block (replace, insertAfter, insertBefore, or delete)
 - "range": Replace a range of blocks from startBlockId to endBlockId
 - "newFile": Create a new document
 
-For single/range edits on the active document, use the block IDs from the active document content. For edits to other documents, first use readPage to get the block IDs.`,
+IMPORTANT: For single/range edits, you may only edit the active document. Do NOT attempt to edit other documents — if the user asks, tell them to open that document first.`,
         inputSchema: z.object({
           mode: z.enum(['single', 'range', 'newFile']),
-          docId: z.string().optional().describe('Document ID (required for single/range modes)'),
+          docId: z.string().optional().describe('Document ID (required for single/range modes — must be the active document)'),
           blockId: z.string().optional().describe('Block ID for single mode'),
           action: z
             .enum(['replace', 'insertAfter', 'insertBefore', 'delete'])
@@ -152,7 +152,20 @@ For single/range edits on the active document, use the block IDs from the active
           folderId: z.string().optional().describe('Folder ID for newFile mode'),
         }),
         execute: async (params) => {
-          // Return the edit instruction for client-side application
+          // Enforce: single/range edits can only target the active document
+          const activeDocId = context?.activeDocId;
+          if (
+            (params.mode === 'single' || params.mode === 'range') &&
+            params.docId &&
+            activeDocId &&
+            params.docId !== activeDocId
+          ) {
+            return {
+              type: 'error' as const,
+              error: `Cannot edit document "${params.docId}" because it is not the active document. Only the currently open document can be edited. Ask the user to navigate to that document first.`,
+            };
+          }
+
           return {
             type: 'edit' as const,
             instruction: {

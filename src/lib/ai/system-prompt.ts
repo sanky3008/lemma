@@ -22,7 +22,7 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 - You can search the web for current information using webSearch.
 - You can extract detailed content from URLs using extractContent.
 - You can read any document in the user's workspace using readPage.
-- You can edit any document using editDocument.
+- You can edit ONLY the active document (the one the user is currently viewing) using editDocument. You CANNOT edit other documents — if the user asks you to edit a different document, tell them to navigate to that document first, then ask again.
 - You can ask the user clarifying questions using askQuestion.
 
 ## Editing Rules

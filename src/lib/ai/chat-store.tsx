@@ -21,10 +21,11 @@ import {
   serializeDocToMarkdown,
   serializeToAnnotatedMarkdown,
 } from './serialize';
-import { applyEditsToEditor, applyEditsToDocContent } from './edit-engine';
+import { applyEditsToEditor } from './edit-engine';
 import type { EditInstruction } from './types';
 
 const THREADS_KEY = 'thinkos-ai-threads';
+const THREAD_MESSAGES_PREFIX = 'thinkos-ai-msgs-';
 
 function generateId() {
   return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
@@ -49,6 +50,26 @@ function loadThreadMetas(): ThreadMeta[] {
 function saveThreadMetas(metas: ThreadMeta[]) {
   if (typeof window === 'undefined') return;
   localStorage.setItem(THREADS_KEY, JSON.stringify(metas));
+}
+
+function loadThreadMessages(threadId: string): UIMessage[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const saved = localStorage.getItem(THREAD_MESSAGES_PREFIX + threadId);
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveThreadMessages(threadId: string, messages: UIMessage[]) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(THREAD_MESSAGES_PREFIX + threadId, JSON.stringify(messages));
+}
+
+function deleteThreadMessages(threadId: string) {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(THREAD_MESSAGES_PREFIX + threadId);
 }
 
 type ChatStoreContextValue = {
@@ -163,12 +184,10 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
         (e.mode === 'single' || e.mode === 'range') &&
         e.docId === activeDocId
     );
-    const otherEdits = normalizedEdits.filter(
-      (e) =>
-        (e.mode === 'single' || e.mode === 'range') &&
-        e.docId !== activeDocId
-    );
     const newFileEdits = edits.filter((e) => e.mode === 'newFile');
+
+    // Silently skip any edits targeting non-active documents
+    // (the server-side tool already returns an error to the AI in this case)
 
     // Apply active doc edits
     if (activeEdits.length > 0 && editorRef.current) {
@@ -202,23 +221,6 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    // Apply other doc edits
-    const docEditGroups = new Map<string, EditInstruction[]>();
-    for (const edit of otherEdits) {
-      if (edit.mode === 'single' || edit.mode === 'range') {
-        const group = docEditGroups.get(edit.docId) ?? [];
-        group.push(edit);
-        docEditGroups.set(edit.docId, group);
-      }
-    }
-    for (const [docId, docEdits] of docEditGroups) {
-      const doc = docStore.docs.find((d) => d.id === docId);
-      if (doc) {
-        const newContent = applyEditsToDocContent(doc.content, docEdits);
-        docStore.updateDocContent(docId, newContent);
-      }
-    }
-
     // Create new files
     for (const edit of newFileEdits) {
       if (edit.mode === 'newFile') {
@@ -239,7 +241,18 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  // Persist messages whenever they change
+  useEffect(() => {
+    if (activeThreadId && chat.messages.length > 0) {
+      saveThreadMessages(activeThreadId, chat.messages);
+    }
+  }, [activeThreadId, chat.messages]);
+
   const createThread = useCallback((): string => {
+    // Save current thread's messages before switching
+    if (activeThreadId && chat.messages.length > 0) {
+      saveThreadMessages(activeThreadId, chat.messages);
+    }
     const id = generateId();
     const meta: ThreadMeta = {
       id,
@@ -250,16 +263,23 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     setActiveThreadId(id);
     chat.setMessages([]);
     return id;
-  }, [chat]);
+  }, [chat, activeThreadId]);
 
   const switchThread = useCallback((id: string) => {
+    // Save current thread's messages before switching
+    if (activeThreadId && chat.messages.length > 0) {
+      saveThreadMessages(activeThreadId, chat.messages);
+    }
     setActiveThreadId(id);
-    chat.setMessages([]);
-  }, [chat]);
+    // Restore the target thread's messages
+    const savedMessages = loadThreadMessages(id);
+    chat.setMessages(savedMessages);
+  }, [chat, activeThreadId]);
 
   const deleteThread = useCallback(
     (id: string) => {
       setThreadMetas((prev) => prev.filter((t) => t.id !== id));
+      deleteThreadMessages(id);
       if (activeThreadId === id) {
         setActiveThreadId(null);
         chat.setMessages([]);
