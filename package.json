@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.28",
+    "@ai-sdk/react": "^3.0.87",
     "@ariakit/react": "^0.4.21",
     "@emoji-mart/data": "^1.2.1",
     "@platejs/ai": "^52.1.0",
@@ -44,6 +46,7 @@
     "@radix-ui/react-popover": "^1.1.15",
     "@radix-ui/react-toolbar": "^1.1.11",
     "@udecode/cn": "^52.0.11",
+    "ai": "^6.0.85",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -61,6 +64,7 @@
     "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "19.2.3",
     "react-lite-youtube-embed": "^3.3.3",
+    "react-markdown": "^10.1.0",
     "react-player": "^3.3.1",
     "react-textarea-autosize": "^8.5.9",
     "remark-gfm": "^4.0.1",
@@ -68,7 +72,8 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.4.0",
     "tailwind-scrollbar-hide": "^4.0.0",
-    "use-file-picker": "^2.1.2"
+    "use-file-picker": "^2.1.2",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

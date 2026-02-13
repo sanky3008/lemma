@@ -10,6 +10,7 @@ import {
   ItalicIcon,
   StrikethroughIcon,
   UnderlineIcon,
+  Bot,
 } from 'lucide-react';
 import { KEYS } from 'platejs';
 import { useEditorReadOnly } from 'platejs/react';
@@ -29,14 +30,20 @@ import {
 import { MarkToolbarButton } from './mark-toolbar-button';
 import { MoreToolbarButton } from './more-toolbar-button';
 import { TableToolbarButton } from './table-toolbar-button';
-import { ToolbarGroup } from './toolbar';
+import { ToolbarGroup, ToolbarButton } from './toolbar';
 import { TurnIntoToolbarButton } from './turn-into-toolbar-button';
 
-export function FixedToolbarButtons() {
+export function FixedToolbarButtons({
+  onAIClick,
+  aiSidebarOpen,
+}: {
+  onAIClick?: () => void;
+  aiSidebarOpen?: boolean;
+}) {
   const readOnly = useEditorReadOnly();
 
   return (
-    <div className="flex w-full">
+    <div className="flex w-full items-center justify-between">
       {!readOnly && (
         <>
           <ToolbarGroup>
@@ -105,6 +112,16 @@ export function FixedToolbarButtons() {
             <MoreToolbarButton />
           </ToolbarGroup>
         </>
+      )}
+
+      {onAIClick && !aiSidebarOpen && (
+        <ToolbarButton
+          onClick={onAIClick}
+          tooltip="Ask Lemma AI"
+          className="ml-auto"
+        >
+          <Bot />
+        </ToolbarButton>
       )}
     </div>
   );

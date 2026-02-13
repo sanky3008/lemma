@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plate, usePlateEditor } from 'platejs/react';
+import { NodeIdPlugin, RangeApi } from 'platejs';
 
 import { BasicBlocksKit } from '@/components/editor/plugins/basic-blocks-kit';
 import { BasicMarksKit } from '@/components/editor/plugins/basic-marks-kit';
@@ -20,6 +21,7 @@ import { Editor, EditorContainer } from '@/components/ui/editor';
 import { FixedToolbar } from '@/components/ui/fixed-toolbar';
 import { FixedToolbarButtons } from '@/components/ui/fixed-toolbar-buttons';
 import { useDocStore } from '@/lib/doc-store';
+import { useChatStore } from '@/lib/ai/chat-store';
 import { FileText } from 'lucide-react';
 
 function PlateEditor({
@@ -29,6 +31,8 @@ function PlateEditor({
     title,
     setTitle,
     saveStatus,
+    onAIClick,
+    aiSidebarOpen,
 }: {
     docId: string;
     initialContent: any[];
@@ -36,7 +40,11 @@ function PlateEditor({
     title: string;
     setTitle: (title: string) => void;
     saveStatus: 'saved' | 'saving' | 'idle';
+    onAIClick?: () => void;
+    aiSidebarOpen?: boolean;
 }) {
+    const chatStore = useChatStore();
+
     const editor = usePlateEditor({
         plugins: [
             ...BasicBlocksKit,
@@ -53,9 +61,48 @@ function PlateEditor({
             ...BlockSelectionKit,
             ...DndKit,
             ...MarkdownKit,
+            NodeIdPlugin.configure({
+                options: {
+                    normalizeInitialValue: true,
+                    reuseId: true,
+                },
+            }),
         ],
         value: initialContent,
     });
+
+    // Expose editor to chat store for AI edits
+    useEffect(() => {
+        chatStore.editorRef.current = editor;
+        return () => {
+            if (chatStore.editorRef.current === editor) {
+                chatStore.editorRef.current = null;
+            }
+        };
+    }, [editor, chatStore.editorRef]);
+
+    // Track text selection for AI context
+    useEffect(() => {
+        const handleSelectionChange = () => {
+            // Small delay to let Slate sync its internal selection state
+            setTimeout(() => {
+                const selection = editor.selection;
+                if (!selection || RangeApi.isCollapsed(selection)) {
+                    chatStore.setSelectedText('');
+                    return;
+                }
+                try {
+                    const text = editor.api.string(selection);
+                    chatStore.setSelectedText(text || '');
+                } catch {
+                    chatStore.setSelectedText('');
+                }
+            }, 10);
+        };
+
+        document.addEventListener('selectionchange', handleSelectionChange);
+        return () => document.removeEventListener('selectionchange', handleSelectionChange);
+    }, [editor, chatStore]);
 
     return (
         <Plate
@@ -66,7 +113,10 @@ function PlateEditor({
         >
             <div className="flex h-full flex-col">
                 <FixedToolbar>
-                    <FixedToolbarButtons />
+                    <FixedToolbarButtons
+                        onAIClick={onAIClick}
+                        aiSidebarOpen={aiSidebarOpen}
+                    />
                 </FixedToolbar>
 
                 <div className="flex shrink-0 items-center gap-3 border-b px-16 py-3 sm:px-[max(64px,calc(50%-350px))]">
@@ -94,7 +144,13 @@ function PlateEditor({
     );
 }
 
-export function DocumentEditor() {
+export function DocumentEditor({
+    onAIClick,
+    aiSidebarOpen,
+}: {
+    onAIClick?: () => void;
+    aiSidebarOpen?: boolean;
+}) {
     const { getActiveDoc, renameDoc, updateDocContent } = useDocStore();
     const activeDoc = getActiveDoc();
 
@@ -167,6 +223,8 @@ export function DocumentEditor() {
             title={localTitle}
             setTitle={handleTitleChange}
             saveStatus={saveStatus}
+            onAIClick={onAIClick}
+            aiSidebarOpen={aiSidebarOpen}
         />
     );
 }

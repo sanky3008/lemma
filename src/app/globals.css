@@ -134,3 +134,19 @@
     @apply bg-background text-foreground;
   }
 }
+
+.ai-edited-block {
+  animation: ai-highlight 3s ease-out;
+}
+
+@keyframes ai-highlight {
+  0% {
+    background-color: oklch(0.488 0.243 264.376 / 0.18);
+  }
+  50% {
+    background-color: oklch(0.488 0.243 264.376 / 0.12);
+  }
+  100% {
+    background-color: transparent;
+  }
+}

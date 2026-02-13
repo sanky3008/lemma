@@ -50,6 +50,7 @@ import {
     SidebarMenuSubItem,
     SidebarSeparator,
     SidebarTrigger,
+    SidebarResizeHandle,
 } from '@/components/ui/sidebar';
 import { useDocStore } from '@/lib/doc-store';
 import { Input } from '@/components/ui/input';
@@ -356,6 +357,7 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 </SidebarGroup>
             </SidebarContent>
 
+            <SidebarResizeHandle />
         </Sidebar>
     );
 }

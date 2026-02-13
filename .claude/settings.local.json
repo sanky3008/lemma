@@ -7,7 +7,9 @@
       "Bash(npx shadcn@latest add:*)",
       "mcp__plate__get_audit_checklist",
       "Bash(npx next build:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(ls:*)",
+      "Bash(node -e:*)"
     ]
   }
 }

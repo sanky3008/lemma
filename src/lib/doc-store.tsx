@@ -99,7 +99,7 @@ type DocStoreActions = {
     createFolder: (name?: string) => Folder;
     renameFolder: (id: string, name: string) => void;
     deleteFolder: (id: string) => void;
-    createDoc: (folderId?: string, title?: string) => Doc;
+    createDoc: (folderId?: string, title?: string, content?: any[]) => Doc;
     renameDoc: (id: string, title: string) => void;
     deleteDoc: (id: string) => void;
     setActiveDoc: (id: string | null) => void;
@@ -108,6 +108,8 @@ type DocStoreActions = {
     getGlobalContextDoc: () => Doc | undefined;
     getRootDocs: () => Doc[];
     getActiveDoc: () => Doc | undefined;
+    getDocById: (id: string) => Doc | undefined;
+    getAllDocs: () => Doc[];
 };
 
 type DocStoreContextValue = AppState & DocStoreActions;
@@ -192,12 +194,12 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
     }, []);
 
     const createDoc = useCallback(
-        (folderId?: string, title?: string): Doc => {
+        (folderId?: string, title?: string, content?: any[]): Doc => {
             const doc: Doc = {
                 id: generateId(),
                 folderId, // undefined = root
                 title: title || 'Untitled Doc',
-                content: [
+                content: content || [
                     {
                         type: 'p',
                         children: [{ text: '' }],
@@ -283,6 +285,17 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
         return state.docs.find((d) => d.id === state.activeDocId);
     }, [state.docs, state.activeDocId]);
 
+    const getDocById = useCallback(
+        (id: string) => {
+            return state.docs.find((d) => d.id === id);
+        },
+        [state.docs]
+    );
+
+    const getAllDocs = useCallback(() => {
+        return state.docs;
+    }, [state.docs]);
+
     const value: DocStoreContextValue = {
         ...state,
         createFolder,
@@ -297,6 +310,8 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
         getRootDocs,
         getGlobalContextDoc,
         getActiveDoc,
+        getDocById,
+        getAllDocs,
     };
 
     return (
