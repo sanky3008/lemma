@@ -14,6 +14,8 @@ import {
 import { KEYS } from 'platejs';
 import { useEditorReadOnly } from 'platejs/react';
 
+import { MediaToolbarButton } from './media-toolbar-button';
+
 import { ExportToolbarButton } from './export-toolbar-button';
 import { ImportToolbarButton } from './import-toolbar-button';
 import { RedoToolbarButton, UndoToolbarButton } from './history-toolbar-button';
@@ -95,6 +97,7 @@ export function FixedToolbarButtons() {
 
           <ToolbarGroup>
             <LinkToolbarButton />
+            <MediaToolbarButton nodeType={KEYS.img} />
             <TableToolbarButton />
           </ToolbarGroup>
 

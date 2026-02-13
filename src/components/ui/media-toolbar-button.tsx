@@ -4,7 +4,6 @@ import * as React from 'react';
 
 import type { DropdownMenuProps } from '@radix-ui/react-dropdown-menu';
 
-import { PlaceholderPlugin } from '@platejs/media/react';
 import {
   AudioLinesIcon,
   FileUpIcon,
@@ -91,7 +90,19 @@ export function MediaToolbarButton({
     accept: currentConfig.accept,
     multiple: true,
     onFilesSelected: ({ plainFiles: updatedFiles }) => {
-      editor.getTransforms(PlaceholderPlugin).insert.media(updatedFiles);
+      updatedFiles.forEach((file: File) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const url = e.target?.result as string;
+          // @ts-ignore
+          editor.tf.insertNodes({
+            type: nodeType,
+            url,
+            children: [{ text: '' }],
+          });
+        };
+        reader.readAsDataURL(file);
+      });
     },
   });
 
