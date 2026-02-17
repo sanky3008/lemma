@@ -150,3 +150,27 @@
     background-color: transparent;
   }
 }
+
+@media print {
+  @page {
+    margin: 15mm;
+    size: auto;
+  }
+  body {
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+    background-color: white;
+  }
+  /* Ensure proper breaks for block elements */
+  p, h1, h2, h3, h4, h5, h6, li, blockquote {
+    break-inside: avoid;
+  }
+  img, svg, table, pre {
+    break-inside: avoid;
+  }
+  /* Reset height constraints that might hide content */
+  html, body, #root, [data-registry="plate"] {
+    height: auto !important;
+    overflow: visible !important;
+  }
+}

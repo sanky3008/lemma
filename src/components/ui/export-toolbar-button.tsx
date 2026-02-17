@@ -25,6 +25,8 @@ import { EditorStatic } from './editor-static';
 import { ToolbarButton } from './toolbar';
 import { DocxExportKit } from '@/components/editor/plugins/docx-export-kit';
 
+import { useReactToPrint } from 'react-to-print';
+
 const siteUrl = 'https://platejs.org';
 
 export function ExportToolbarButton(props: DropdownMenuProps) {
@@ -38,10 +40,21 @@ export function ExportToolbarButton(props: DropdownMenuProps) {
     document.head.append(style);
 
     const canvas = await html2canvas(editor.api.toDOMNode(editor)!, {
-      onclone: (document: Document) => {
-        const editorElement = document.querySelector(
-          '[contenteditable="true"]'
-        );
+      scale: 2,
+      onclone: (_doc: Document, clonedEl: HTMLElement) => {
+        // Remove height/overflow constraints on all ancestors so the full
+        // document is rendered, not just the visible viewport portion.
+        let el: HTMLElement | null = clonedEl.parentElement;
+        while (el) {
+          el.style.overflow = 'visible';
+          el.style.maxHeight = 'none';
+          el.style.height = 'auto';
+          el = el.parentElement;
+        }
+
+        // Inject system fonts into cloned content
+        const editorElement =
+          clonedEl.closest('[contenteditable="true"]') ?? clonedEl;
         if (editorElement) {
           Array.from(editorElement.querySelectorAll('*')).forEach((element) => {
             const existingStyle = element.getAttribute('style') || '';
@@ -75,24 +88,21 @@ export function ExportToolbarButton(props: DropdownMenuProps) {
     window.URL.revokeObjectURL(blobUrl);
   };
 
-  const exportToPdf = async () => {
-    const canvas = await getCanvas();
-
-    const PDFLib = await import('pdf-lib');
-    const pdfDoc = await PDFLib.PDFDocument.create();
-    const page = pdfDoc.addPage([canvas.width, canvas.height]);
-    const imageEmbed = await pdfDoc.embedPng(canvas.toDataURL('PNG'));
-    const { height, width } = imageEmbed.scale(1);
-    page.drawImage(imageEmbed, {
-      height,
-      width,
-      x: 0,
-      y: 0,
-    });
-    const pdfBase64 = await pdfDoc.saveAsBase64({ dataUri: true });
-
-    await downloadFile(pdfBase64, 'plate.pdf');
-  };
+  const exportToPdf = useReactToPrint({
+    contentRef: { current: editor.api.toDOMNode(editor) } as any,
+    documentTitle: 'document',
+    print: (target: HTMLIFrameElement) => {
+      return new Promise<void>((resolve, reject) => {
+        if (target.contentWindow) {
+          target.contentWindow.focus();
+          target.contentWindow.print();
+          resolve();
+        } else {
+          reject(new Error('Print window not found'));
+        }
+      })
+    }
+  });
 
   const exportToImage = async () => {
     const canvas = await getCanvas();
@@ -178,7 +188,7 @@ export function ExportToolbarButton(props: DropdownMenuProps) {
           <DropdownMenuItem onSelect={exportToHtml}>
             Export as HTML
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={exportToPdf}>
+          <DropdownMenuItem onSelect={() => exportToPdf()}>
             Export as PDF
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={exportToImage}>

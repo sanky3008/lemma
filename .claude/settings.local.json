@@ -9,7 +9,19 @@
       "Bash(npx next build:*)",
       "Bash(npm install:*)",
       "Bash(ls:*)",
-      "Bash(node -e:*)"
+      "Bash(node -e:*)",
+      "Bash(npx tsc:*)",
+      "WebSearch",
+      "WebFetch(domain:platejs.org)",
+      "WebFetch(domain:github.com)",
+      "mcp__plate__view_items_in_registries",
+      "WebFetch(domain:medium.com)",
+      "WebFetch(domain:blog.huli.tw)",
+      "WebFetch(domain:harrisonpim.com)",
+      "WebFetch(domain:blog.logrocket.com)",
+      "WebFetch(domain:apitemplate.io)",
+      "WebFetch(domain:pro.platejs.org)",
+      "WebFetch(domain:vercel.com)"
     ]
   }
 }
