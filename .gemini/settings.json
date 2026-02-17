@@ -1,0 +1,26 @@
+{
+  "context": {
+    // Forces Gemini to read files immediately, not "on demand"
+    "indexingStrategy": "eager",
+    
+    // The Critical Part: Explicitly whitelist folders usually ignored
+    "includeDirectories": [
+      "src", 
+      "docs",
+      "packages",
+      // TRICK: Add specific node_modules you use heavily so it stops hallucinating APIs
+      "node_modules/platejs", 
+      "node_modules/shadcn"
+    ],
+    
+    // Override the default safety cap (Standard is usually 2M)
+    "maxContextWindow": 10000000,
+    
+    // Clear default exclusions so it reads lockfiles/configs if needed
+    "exclusionRules": []
+  },
+  "agent": {
+      // Optional: Forces the agent to be verbose
+      "systemPromptOverride": "You are in EAGER MODE. Do not use placeholders."
+  }
+}

@@ -10,96 +10,17 @@ import {
 } from 'react';
 
 import type { AppState, Doc, Folder } from './types';
-
-const STORAGE_KEY = 'thinkos-store-v2';
-
-function generateId() {
-    return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
-}
-
-const GLOBAL_CONTEXT_ID = 'global-context';
-const DEFAULT_FOLDER_ID = 'default-folder';
-const DEFAULT_DOC_ID = 'default-doc';
-
-function createDefaultState(): AppState {
-    const now = Date.now();
-
-    return {
-        folders: [
-            {
-                id: DEFAULT_FOLDER_ID,
-                name: 'My PRDs',
-                createdAt: now,
-            },
-        ],
-        docs: [
-            {
-                id: GLOBAL_CONTEXT_ID,
-                title: 'Context',
-                content: [
-                    {
-                        type: 'p',
-                        children: [
-                            {
-                                text: 'Add your background context here — problem areas, constraints, links, reusable snippets.',
-                            },
-                        ],
-                    },
-                ],
-                isContext: true,
-                createdAt: now,
-                updatedAt: now,
-            },
-            {
-                id: DEFAULT_DOC_ID,
-                folderId: DEFAULT_FOLDER_ID,
-                title: 'Untitled PRD',
-                content: [
-                    {
-                        type: 'p',
-                        children: [{ text: '' }],
-                    },
-                ],
-                isContext: false,
-                createdAt: now,
-                updatedAt: now,
-            },
-        ],
-        activeDocId: DEFAULT_DOC_ID,
-    };
-}
-
-function loadState(): AppState {
-    if (typeof window === 'undefined') return createDefaultState();
-
-    try {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-            const parsed = JSON.parse(saved) as AppState;
-            // Basic validation
-            if (parsed.docs?.length > 0) {
-                return parsed;
-            }
-        }
-    } catch {
-        // Ignore parse errors
-    }
-
-    return createDefaultState();
-}
-
-function saveState(state: AppState) {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-}
+import { useQuery, useMutation, useConvexAuth } from 'convex/react';
+import { api } from '../../convex/_generated/api';
+import { Id } from '../../convex/_generated/dataModel';
 
 // --- Context ---
 
 type DocStoreActions = {
-    createFolder: (name?: string) => Folder;
+    createFolder: (name?: string) => Promise<string | null>;
     renameFolder: (id: string, name: string) => void;
     deleteFolder: (id: string) => void;
-    createDoc: (folderId?: string, title?: string, content?: any[]) => Doc;
+    createDoc: (folderId?: string, title?: string, content?: any[]) => Promise<string | null>;
     renameDoc: (id: string, title: string) => void;
     deleteDoc: (id: string) => void;
     setActiveDoc: (id: string | null) => void;
@@ -110,6 +31,7 @@ type DocStoreActions = {
     getActiveDoc: () => Doc | undefined;
     getDocById: (id: string) => Doc | undefined;
     getAllDocs: () => Doc[];
+    isLoading: boolean;
 };
 
 type DocStoreContextValue = AppState & DocStoreActions;
@@ -117,194 +39,161 @@ type DocStoreContextValue = AppState & DocStoreActions;
 const DocStoreContext = createContext<DocStoreContextValue | null>(null);
 
 export function DocStoreProvider({ children }: { children: ReactNode }) {
-    // Initialize with a lazy initializer that is consistent across renders if possible
-    // For hydration/SSR match, we ideally start with a deterministic state or null.
-    // However, Next.js hydration expects matching HTML.
-    // We use createDefaultState which uses hardcoded IDs for the initial state.
-    // This ensures server and client match on first render.
-    // Then we load true state in useEffect if needed?
-    // Actually, loadState accessing localStorage is DANGEROUS during render for hydration.
-    // It causes mismatch if server sends default and client sends localStorage data.
-    // CORRECT PATTERN: Initialize with default, then useEffect to load storage.
+    // 1. Fetch Data from Convex
+    const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
+    const foldersRaw = useQuery(api.documents.getFolders);
+    const docsRaw = useQuery(api.documents.getDocs);
 
-    const [state, setState] = useState<AppState>(createDefaultState);
-    const [isLoaded, setIsLoaded] = useState(false);
+    // 2. Local State for UI
+    const [activeDocId, setActiveDocId] = useState<string | null>(null);
 
     useEffect(() => {
-        // Load from storage after mount
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-            try {
-                const parsed = JSON.parse(saved);
-                if (parsed.docs?.length > 0) {
-                    setState(parsed);
-                }
-            } catch (e) {
-                console.error('Failed to load state', e);
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('thinos-active-doc-id');
+            if (saved) setActiveDocId(saved);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            if (activeDocId) {
+                localStorage.setItem('thinos-active-doc-id', activeDocId);
+            } else {
+                localStorage.removeItem('thinos-active-doc-id');
             }
         }
-        setIsLoaded(true);
-    }, []);
+    }, [activeDocId]);
 
-    // Persist on state change (only after loaded)
-    useEffect(() => {
-        if (isLoaded) {
-            saveState(state);
-        }
-    }, [state, isLoaded]);
+    // 3. Mutations
+    const createFolderMutation = useMutation(api.documents.createFolder);
+    const renameFolderMutation = useMutation(api.documents.updateFolder);
+    const deleteFolderMutation = useMutation(api.documents.deleteFolder);
 
-    const createFolder = useCallback((name?: string): Folder => {
-        const folder: Folder = {
-            id: generateId(),
-            name: name || 'New Folder',
-            createdAt: Date.now(),
-        };
-        // No context doc created per folder anymore
-        setState((prev) => ({
-            ...prev,
-            folders: [...prev.folders, folder],
-        }));
-        return folder;
-    }, []);
+    const createDocMutation = useMutation(api.documents.createDoc);
+    const updateDocMutation = useMutation(api.documents.updateDoc);
+    const deleteDocMutation = useMutation(api.documents.deleteDoc);
+
+    // 4. Adapters
+    const folders = (foldersRaw || []).map(f => ({
+        id: f._id,
+        name: f.name,
+        createdAt: f._creationTime
+    })) as Folder[];
+
+    const docs = (docsRaw || []).map(d => ({
+        id: d._id,
+        folderId: d.folderId,
+        title: d.title,
+        content: d.content,
+        isContext: d.isContext || false,
+        createdAt: d._creationTime,
+        // using creation time as update time for now since we don't track updates yet
+        updatedAt: d._creationTime
+    })) as Doc[];
+
+    // Combine loading states
+    const isLoading = isAuthLoading || foldersRaw === undefined || docsRaw === undefined;
+
+    // --- Actions ---
+
+    const createFolder = useCallback(async (name?: string) => {
+        if (!isAuthenticated) return null;
+        const id = await createFolderMutation({ name: name || 'New Folder' });
+        return id;
+    }, [createFolderMutation, isAuthenticated]);
 
     const renameFolder = useCallback((id: string, name: string) => {
-        setState((prev) => ({
-            ...prev,
-            folders: prev.folders.map((f) => (f.id === id ? { ...f, name } : f)),
-        }));
-    }, []);
+        if (!isAuthenticated) return;
+        renameFolderMutation({ id: id as Id<"folders">, name });
+    }, [renameFolderMutation, isAuthenticated]);
 
     const deleteFolder = useCallback((id: string) => {
-        setState((prev) => {
-            // Allow deleting any folder now
-            const docsInFolder = prev.docs.filter((d) => d.folderId === id);
-            const docIds = new Set(docsInFolder.map((d) => d.id));
-            const newActiveDocId =
-                prev.activeDocId && docIds.has(prev.activeDocId)
-                    ? prev.docs.find((d) => !docIds.has(d.id))?.id ?? null
-                    : prev.activeDocId;
+        if (!isAuthenticated) return;
+        if (activeDocId) {
+            // If active doc is in this folder, deselect it
+            const doc = docs.find(d => d.id === activeDocId);
+            if (doc && doc.folderId === id) {
+                setActiveDocId(null);
+            }
+        }
+        deleteFolderMutation({ id: id as Id<"folders"> });
+    }, [deleteFolderMutation, activeDocId, docs, isAuthenticated]);
 
-            return {
-                ...prev,
-                folders: prev.folders.filter((f) => f.id !== id),
-                docs: prev.docs.filter((d) => d.folderId !== id),
-                activeDocId: newActiveDocId,
-            };
+    const createDoc = useCallback(async (folderId?: string, title?: string, content?: any[]) => {
+        if (!isAuthenticated) return null;
+        const id = await createDocMutation({
+            title: title || 'Untitled Doc',
+            folderId,
+            content
         });
-    }, []);
-
-    const createDoc = useCallback(
-        (folderId?: string, title?: string, content?: any[]): Doc => {
-            const doc: Doc = {
-                id: generateId(),
-                folderId, // undefined = root
-                title: title || 'Untitled Doc',
-                content: content || [
-                    {
-                        type: 'p',
-                        children: [{ text: '' }],
-                    },
-                ],
-                isContext: false,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-            };
-            setState((prev) => ({
-                ...prev,
-                docs: [...prev.docs, doc],
-                activeDocId: doc.id,
-            }));
-            return doc;
-        },
-        []
-    );
+        setActiveDocId(id);
+        return id;
+    }, [createDocMutation, isAuthenticated]);
 
     const renameDoc = useCallback((id: string, title: string) => {
-        setState((prev) => ({
-            ...prev,
-            docs: prev.docs.map((d) =>
-                d.id === id ? { ...d, title, updatedAt: Date.now() } : d
-            ),
-        }));
-    }, []);
-
-    const deleteDoc = useCallback((id: string) => {
-        setState((prev) => {
-            const doc = prev.docs.find((d) => d.id === id);
-            if (!doc) return prev;
-
-            // Cannot delete the global context doc
-            if (doc.isContext) return prev;
-
-            const newActiveDocId =
-                prev.activeDocId === id
-                    ? prev.docs.find((d) => d.id !== id)?.id ?? null
-                    : prev.activeDocId;
-
-            return {
-                ...prev,
-                docs: prev.docs.filter((d) => d.id !== id),
-                activeDocId: newActiveDocId,
-            };
-        });
-    }, []);
-
-    const setActiveDoc = useCallback((id: string | null) => {
-        setState((prev) => ({ ...prev, activeDocId: id }));
-    }, []);
+        if (!isAuthenticated) return;
+        updateDocMutation({ id: id as Id<"documents">, title });
+    }, [updateDocMutation, isAuthenticated]);
 
     const updateDocContent = useCallback((id: string, content: any[]) => {
-        setState((prev) => ({
-            ...prev,
-            docs: prev.docs.map((d) =>
-                d.id === id ? { ...d, content, updatedAt: Date.now() } : d
-            ),
-        }));
-    }, []);
+        if (!isAuthenticated) return;
+        updateDocMutation({ id: id as Id<"documents">, content });
+    }, [updateDocMutation, isAuthenticated]);
+
+    const deleteDoc = useCallback((id: string) => {
+        if (!isAuthenticated) return;
+        if (activeDocId === id) setActiveDocId(null);
+        deleteDocMutation({ id: id as Id<"documents"> });
+    }, [deleteDocMutation, activeDocId, isAuthenticated]);
+
+
+    // --- Getters ---
 
     const getDocsForFolder = useCallback(
         (folderId: string) => {
-            return state.docs
+            return docs
                 .filter((d) => d.folderId === folderId)
                 .sort((a, b) => a.createdAt - b.createdAt);
         },
-        [state.docs]
+        [docs]
     );
 
     const getRootDocs = useCallback(() => {
-        return state.docs
+        return docs
             .filter((d) => !d.folderId && !d.isContext)
             .sort((a, b) => a.createdAt - b.createdAt);
-    }, [state.docs]);
+    }, [docs]);
 
     const getGlobalContextDoc = useCallback(() => {
-        return state.docs.find((d) => d.isContext);
-    }, [state.docs]);
+        return docs.find((d) => d.isContext);
+    }, [docs]);
 
     const getActiveDoc = useCallback(() => {
-        return state.docs.find((d) => d.id === state.activeDocId);
-    }, [state.docs, state.activeDocId]);
+        return docs.find((d) => d.id === activeDocId);
+    }, [docs, activeDocId]);
 
     const getDocById = useCallback(
         (id: string) => {
-            return state.docs.find((d) => d.id === id);
+            return docs.find((d) => d.id === id);
         },
-        [state.docs]
+        [docs]
     );
 
     const getAllDocs = useCallback(() => {
-        return state.docs;
-    }, [state.docs]);
+        return docs;
+    }, [docs]);
 
     const value: DocStoreContextValue = {
-        ...state,
+        folders,
+        docs,
+        activeDocId,
         createFolder,
         renameFolder,
         deleteFolder,
         createDoc,
         renameDoc,
         deleteDoc,
-        setActiveDoc,
+        setActiveDoc: setActiveDocId,
         updateDocContent,
         getDocsForFolder,
         getRootDocs,
@@ -312,6 +201,7 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
         getActiveDoc,
         getDocById,
         getAllDocs,
+        isLoading,
     };
 
     return (
@@ -326,3 +216,4 @@ export function useDocStore() {
     }
     return context;
 }
+

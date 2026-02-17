@@ -24,6 +24,29 @@ import { useDocStore } from '@/lib/doc-store';
 import { useChatStore } from '@/lib/ai/chat-store';
 import { FileText } from 'lucide-react';
 
+const plugins = [
+    ...BasicBlocksKit,
+    ...BasicMarksKit,
+    ...LinkKit,
+    ...ListKit,
+    ...TableKit,
+    ...CodeBlockKit,
+    ...CalloutKit,
+    // FixedToolbarKit removed - rendered manually
+    ...MediaKit,
+    ...FloatingToolbarKit,
+    ...SlashKit,
+    ...BlockSelectionKit,
+    ...DndKit,
+    ...MarkdownKit,
+    NodeIdPlugin.configure({
+        options: {
+            normalizeInitialValue: true,
+            reuseId: true,
+        },
+    }),
+];
+
 function PlateEditor({
     docId,
     initialContent,
@@ -46,28 +69,7 @@ function PlateEditor({
     const chatStore = useChatStore();
 
     const editor = usePlateEditor({
-        plugins: [
-            ...BasicBlocksKit,
-            ...BasicMarksKit,
-            ...LinkKit,
-            ...ListKit,
-            ...TableKit,
-            ...CodeBlockKit,
-            ...CalloutKit,
-            // FixedToolbarKit removed - rendered manually
-            ...MediaKit,
-            ...FloatingToolbarKit,
-            ...SlashKit,
-            ...BlockSelectionKit,
-            ...DndKit,
-            ...MarkdownKit,
-            NodeIdPlugin.configure({
-                options: {
-                    normalizeInitialValue: true,
-                    reuseId: true,
-                },
-            }),
-        ],
+        plugins,
         value: initialContent,
     });
 
@@ -82,10 +84,16 @@ function PlateEditor({
     }, [editor, chatStore.editorRef]);
 
     // Track text selection for AI context
+    const selectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
     useEffect(() => {
         const handleSelectionChange = () => {
-            // Small delay to let Slate sync its internal selection state
-            setTimeout(() => {
+            if (selectionTimeoutRef.current) {
+                clearTimeout(selectionTimeoutRef.current);
+            }
+
+            // Debounce selection updates to avoid performance issues
+            selectionTimeoutRef.current = setTimeout(() => {
                 const selection = editor.selection;
                 if (!selection || RangeApi.isCollapsed(selection)) {
                     chatStore.setSelectedText('');
@@ -97,11 +105,16 @@ function PlateEditor({
                 } catch {
                     chatStore.setSelectedText('');
                 }
-            }, 10);
+            }, 500);
         };
 
         document.addEventListener('selectionchange', handleSelectionChange);
-        return () => document.removeEventListener('selectionchange', handleSelectionChange);
+        return () => {
+            document.removeEventListener('selectionchange', handleSelectionChange);
+            if (selectionTimeoutRef.current) {
+                clearTimeout(selectionTimeoutRef.current);
+            }
+        };
     }, [editor, chatStore]);
 
     return (
@@ -160,6 +173,8 @@ export function DocumentEditor({
     const [localTitle, setLocalTitle] = useState('');
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+    const titleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
     // Sync local title when activeDoc changes
     useEffect(() => {
         if (activeDoc) {
@@ -170,9 +185,16 @@ export function DocumentEditor({
     const handleTitleChange = useCallback(
         (newTitle: string) => {
             setLocalTitle(newTitle);
-            if (activeDoc) {
-                renameDoc(activeDoc.id, newTitle);
+
+            if (!activeDoc) return;
+
+            if (titleTimeoutRef.current) {
+                clearTimeout(titleTimeoutRef.current);
             }
+
+            titleTimeoutRef.current = setTimeout(() => {
+                renameDoc(activeDoc.id, newTitle);
+            }, 500);
         },
         [activeDoc, renameDoc]
     );
@@ -200,6 +222,9 @@ export function DocumentEditor({
         return () => {
             if (saveTimeoutRef.current) {
                 clearTimeout(saveTimeoutRef.current);
+            }
+            if (titleTimeoutRef.current) {
+                clearTimeout(titleTimeoutRef.current);
             }
         };
     }, []);

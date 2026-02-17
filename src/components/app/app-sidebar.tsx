@@ -6,7 +6,6 @@ import {
     ChevronRight,
     FileText,
     FolderIcon,
-    MoreHorizontal,
     Plus,
     Trash2,
     Pencil,
@@ -30,7 +29,6 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
@@ -48,14 +46,28 @@ import {
     SidebarMenuSub,
     SidebarMenuSubButton,
     SidebarMenuSubItem,
-    SidebarSeparator,
     SidebarTrigger,
     SidebarResizeHandle,
+    SidebarFooter,
 } from '@/components/ui/sidebar';
 import { useDocStore } from '@/lib/doc-store';
 import { Input } from '@/components/ui/input';
+import { UserButton, useUser } from '@clerk/nextjs';
+import { useConvexAuth, useMutation } from 'convex/react';
+import { useEffect } from 'react';
+import { api } from '../../../convex/_generated/api';
 
 export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
+    const { isAuthenticated } = useConvexAuth();
+    const { user } = useUser();
+    const storeUser = useMutation(api.users.store);
+
+    useEffect(() => {
+        if (isAuthenticated && user) {
+            storeUser({});
+        }
+    }, [isAuthenticated, user, storeUser]);
+
     const {
         folders,
         activeDocId,
@@ -357,6 +369,19 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                 </SidebarGroup>
             </SidebarContent>
 
+            <SidebarFooter>
+                <div className="flex items-center gap-2 px-2 py-1.5 text-sm">
+                    <UserButton
+                        showName
+                        appearance={{
+                            elements: {
+                                userButtonBox: "flex-row-reverse",
+                                userButtonOuterIdentifier: "text-sidebar-foreground font-medium",
+                            },
+                        }}
+                    />
+                </div>
+            </SidebarFooter>
             <SidebarResizeHandle />
         </Sidebar>
     );
