@@ -10,6 +10,7 @@
 
 import type * as comments from "../comments.js";
 import type * as documents from "../documents.js";
+import type * as threads from "../threads.js";
 import type * as users from "../users.js";
 
 import type {
@@ -21,6 +22,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   comments: typeof comments;
   documents: typeof documents;
+  threads: typeof threads;
   users: typeof users;
 }>;
 

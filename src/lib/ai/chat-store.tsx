@@ -25,56 +25,20 @@ import {
 } from './serialize';
 import { applyEditsToEditor } from './edit-engine';
 import type { EditInstruction } from './types';
-import { useQuery } from 'convex/react';
+import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
-
-const THREADS_KEY = 'thinkos-ai-threads';
-const THREAD_MESSAGES_PREFIX = 'thinkos-ai-msgs-';
+import type { Id } from '../../../convex/_generated/dataModel';
 
 function generateId() {
   return Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
 }
 
 type ThreadMeta = {
-  id: string;
+  id: string; // local client ID
+  convexId: Id<'threads'> | null; // Convex DB ID (null until created)
   title: string;
   createdAt: number;
 };
-
-function loadThreadMetas(): ThreadMeta[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const saved = localStorage.getItem(THREADS_KEY);
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveThreadMetas(metas: ThreadMeta[]) {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(THREADS_KEY, JSON.stringify(metas));
-}
-
-function loadThreadMessages(threadId: string): UIMessage[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const saved = localStorage.getItem(THREAD_MESSAGES_PREFIX + threadId);
-    return saved ? JSON.parse(saved) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveThreadMessages(threadId: string, messages: UIMessage[]) {
-  if (typeof window === 'undefined') return;
-  localStorage.setItem(THREAD_MESSAGES_PREFIX + threadId, JSON.stringify(messages));
-}
-
-function deleteThreadMessages(threadId: string) {
-  if (typeof window === 'undefined') return;
-  localStorage.removeItem(THREAD_MESSAGES_PREFIX + threadId);
-}
 
 // ─── Stable context: things the editor needs (rarely changes) ───
 
@@ -104,6 +68,25 @@ const chatTransport = new DefaultChatTransport({
   api: '/api/ai/chat',
 });
 
+/** Convert UIMessages to the simplified format Convex stores */
+function uiMessagesToConvex(messages: UIMessage[]) {
+  return messages
+    .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .map((m) => {
+      const content = m.parts
+        .filter((p: any) => p.type === 'text')
+        .map((p: any) => p.text as string)
+        .join('');
+
+      return {
+        id: m.id,
+        role: m.role as 'user' | 'assistant',
+        content,
+        createdAt: Date.now(),
+      };
+    });
+}
+
 export function ChatStoreProvider({ children }: { children: ReactNode }) {
   const [threadMetas, setThreadMetas] = useState<ThreadMeta[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
@@ -111,25 +94,48 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
   const editorRef = useRef<SlateEditor | null>(null);
   const appliedEditsRef = useRef<Set<string>>(new Set());
 
+  // Map from local clientId → Convex _id (persisted in a ref to avoid re-renders)
+  const convexIdMapRef = useRef<Map<string, Id<'threads'>>>(new Map());
+
   const docStore = useDocStore();
   const activeDocId = docStore.getActiveDoc()?.id;
 
   // Fetch comments for the active document
-  // We use "skip" if no active doc, but useQuery with skip is handled by conditional argument in Convex? 
-  // Convex useQuery hook: useQuery(api.foo.bar, args ?? "skip")
-  const comments = useQuery(api.comments.list, activeDocId ? { documentId: activeDocId } : "skip");
+  const comments = useQuery(api.comments.list, activeDocId ? { documentId: activeDocId } : 'skip');
 
-  // Load thread metas on mount
-  useEffect(() => {
-    setThreadMetas(loadThreadMetas());
-  }, []);
+  // Fetch thread list from Convex
+  const convexThreads = useQuery(api.threads.list);
 
-  // Persist thread metas
+  // Convex mutations
+  const convexCreate = useMutation(api.threads.create);
+  const convexUpdateTitle = useMutation(api.threads.updateTitle);
+  const convexSaveMessages = useMutation(api.threads.saveMessages);
+  const convexRemove = useMutation(api.threads.remove);
+
+  // Sync Convex threads into local state on first load
+  const initializedRef = useRef(false);
   useEffect(() => {
-    if (threadMetas.length > 0) {
-      saveThreadMetas(threadMetas);
+    if (initializedRef.current) return;
+    if (convexThreads === undefined) return; // still loading
+
+    initializedRef.current = true;
+
+    if (convexThreads.length === 0) return;
+
+    const metas: ThreadMeta[] = convexThreads.map((t) => ({
+      id: t._id, // use convex ID as local ID for simplicity on load
+      convexId: t._id as Id<'threads'>,
+      title: t.title ?? 'Chat',
+      createdAt: t.createdAt,
+    }));
+
+    setThreadMetas(metas);
+
+    // Populate the map
+    for (const t of convexThreads) {
+      convexIdMapRef.current.set(t._id, t._id as Id<'threads'>);
     }
-  }, [threadMetas]);
+  }, [convexThreads]);
 
   const assembleContext = useCallback(() => {
     const activeDoc = docStore.getActiveDoc();
@@ -173,7 +179,6 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
   }, [docStore, selectedText, comments]);
 
   const applyEditsFromMessage = useCallback((message: UIMessage) => {
-    // Avoid applying edits twice
     if (appliedEditsRef.current.has(message.id)) return;
     appliedEditsRef.current.add(message.id);
 
@@ -194,7 +199,6 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
 
     const activeDocId = docStore.getActiveDoc()?.id;
 
-    // Default missing docId to the active document
     const normalizedEdits = edits.map((e) => {
       if ((e.mode === 'single' || e.mode === 'range') && !e.docId && activeDocId) {
         return { ...e, docId: activeDocId };
@@ -209,14 +213,9 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     );
     const newFileEdits = edits.filter((e) => e.mode === 'newFile');
 
-    // Silently skip any edits targeting non-active documents
-    // (the server-side tool already returns an error to the AI in this case)
-
-    // Apply active doc edits
     if (activeEdits.length > 0 && editorRef.current) {
       const newBlockIds = applyEditsToEditor(editorRef.current, activeEdits);
 
-      // Highlight new blocks and scroll to the first one
       if (newBlockIds.length > 0) {
         requestAnimationFrame(() => {
           const editor = editorRef.current;
@@ -238,16 +237,13 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
             }
           }
 
-          // Scroll first edited block into view
           firstDom?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         });
       }
     }
 
-    // Create new files
     for (const edit of newFileEdits) {
       if (edit.mode === 'newFile') {
-        // Deserialize markdown to Plate content
         const mdEditor = createMarkdownEditor();
         const content = edit.markdown
           ? deserializeMd(mdEditor, edit.markdown)
@@ -264,72 +260,176 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     },
   });
 
-  // Persist messages whenever they change
+  // Persist messages to Convex whenever they finish streaming
+  const saveToConvex = useCallback(
+    async (threadLocalId: string, messages: UIMessage[]) => {
+      const convexId = convexIdMapRef.current.get(threadLocalId);
+      if (!convexId) return;
+
+      const convexMessages = uiMessagesToConvex(messages);
+      try {
+        await convexSaveMessages({ threadId: convexId, messages: convexMessages });
+      } catch (err) {
+        console.error('[chat-store] Failed to save messages to Convex:', err);
+      }
+    },
+    [convexSaveMessages]
+  );
+
+  // Save on each completed response
   useEffect(() => {
-    if (activeThreadId && chat.messages.length > 0) {
-      saveThreadMessages(activeThreadId, chat.messages);
+    if (activeThreadId && chat.status === 'ready' && chat.messages.length > 0) {
+      saveToConvex(activeThreadId, chat.messages);
     }
-  }, [activeThreadId, chat.messages]);
+  }, [activeThreadId, chat.status, chat.messages, saveToConvex]);
 
   const createThread = useCallback((): string => {
-    // Save current thread's messages before switching
-    if (activeThreadId && chat.messages.length > 0) {
-      saveThreadMessages(activeThreadId, chat.messages);
-    }
     const id = generateId();
     const meta: ThreadMeta = {
       id,
+      convexId: null,
       title: 'New Chat',
       createdAt: Date.now(),
     };
     setThreadMetas((prev) => [meta, ...prev]);
     setActiveThreadId(id);
     chat.setMessages([]);
-    return id;
-  }, [chat, activeThreadId]);
 
-  const switchThread = useCallback((id: string) => {
-    // Save current thread's messages before switching
-    if (activeThreadId && chat.messages.length > 0) {
-      saveThreadMessages(activeThreadId, chat.messages);
+    // Create in Convex asynchronously
+    convexCreate({ clientId: id, title: 'New Chat' })
+      .then((convexId) => {
+        convexIdMapRef.current.set(id, convexId as Id<'threads'>);
+        setThreadMetas((prev) =>
+          prev.map((t) => (t.id === id ? { ...t, convexId: convexId as Id<'threads'> } : t))
+        );
+      })
+      .catch((err) => console.error('[chat-store] Failed to create thread in Convex:', err));
+
+    return id;
+  }, [chat, convexCreate]);
+
+  const switchThread = useCallback(
+    async (id: string) => {
+      // Save current thread before switching
+      if (activeThreadId && chat.messages.length > 0) {
+        await saveToConvex(activeThreadId, chat.messages);
+      }
+
+      setActiveThreadId(id);
+
+      // Load messages from Convex if we have a convex ID
+      const convexId = convexIdMapRef.current.get(id);
+      if (convexId) {
+        // Messages will be loaded via the get query below; for now clear optimistically
+        chat.setMessages([]);
+      } else {
+        chat.setMessages([]);
+      }
+    },
+    [chat, activeThreadId, saveToConvex]
+  );
+
+  // Load messages when switching to a thread that has a Convex ID
+  const activeConvexId = activeThreadId
+    ? (convexIdMapRef.current.get(activeThreadId) ?? null)
+    : null;
+
+  const activeThreadData = useQuery(
+    api.threads.get,
+    activeConvexId ? { threadId: activeConvexId } : 'skip'
+  );
+
+  // When we switch threads and data loads, populate messages
+  const lastLoadedThreadRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!activeThreadId || !activeThreadData) return;
+    if (lastLoadedThreadRef.current === activeThreadId) return;
+    if (chat.messages.length > 0) return; // already has messages (user just sent one)
+
+    lastLoadedThreadRef.current = activeThreadId;
+
+    // Convert Convex messages back to UIMessage format
+    const uiMessages: UIMessage[] = activeThreadData.messages.map((m) => ({
+      id: m.id,
+      role: m.role,
+      content: m.content,
+      parts: [{ type: 'text' as const, text: m.content }],
+      createdAt: new Date(m.createdAt),
+    }));
+
+    if (uiMessages.length > 0) {
+      chat.setMessages(uiMessages);
     }
-    setActiveThreadId(id);
-    // Restore the target thread's messages
-    const savedMessages = loadThreadMessages(id);
-    chat.setMessages(savedMessages);
-  }, [chat, activeThreadId]);
+  }, [activeThreadId, activeThreadData, chat]);
 
   const deleteThread = useCallback(
     (id: string) => {
       setThreadMetas((prev) => prev.filter((t) => t.id !== id));
-      deleteThreadMessages(id);
+
       if (activeThreadId === id) {
         setActiveThreadId(null);
         chat.setMessages([]);
       }
+
+      const convexId = convexIdMapRef.current.get(id);
+      if (convexId) {
+        convexRemove({ threadId: convexId }).catch((err) =>
+          console.error('[chat-store] Failed to delete thread from Convex:', err)
+        );
+        convexIdMapRef.current.delete(id);
+      }
     },
-    [activeThreadId, chat]
+    [activeThreadId, chat, convexRemove]
   );
 
   const handleSendMessage = useCallback(
     (content: string) => {
-      if (!activeThreadId) {
+      let threadLocalId = activeThreadId;
+
+      if (!threadLocalId) {
+        // Create a new thread locally + in Convex
         const id = generateId();
+        const title = content.substring(0, 50) + (content.length > 50 ? '...' : '');
         const meta: ThreadMeta = {
           id,
-          title: content.substring(0, 50) + (content.length > 50 ? '...' : ''),
+          convexId: null,
+          title,
           createdAt: Date.now(),
         };
         setThreadMetas((prev) => [meta, ...prev]);
         setActiveThreadId(id);
+        threadLocalId = id;
+
+        convexCreate({ clientId: id, title })
+          .then((convexId) => {
+            convexIdMapRef.current.set(id, convexId as Id<'threads'>);
+            setThreadMetas((prev) =>
+              prev.map((t) => (t.id === id ? { ...t, convexId: convexId as Id<'threads'> } : t))
+            );
+          })
+          .catch((err) => console.error('[chat-store] Failed to create thread in Convex:', err));
       } else {
+        // Update title from "New Chat" to first message
         setThreadMetas((prev) =>
           prev.map((t) =>
-            t.id === activeThreadId && t.title === 'New Chat'
-              ? { ...t, title: content.substring(0, 50) + (content.length > 50 ? '...' : '') }
+            t.id === threadLocalId && t.title === 'New Chat'
+              ? {
+                  ...t,
+                  title: content.substring(0, 50) + (content.length > 50 ? '...' : ''),
+                }
               : t
           )
         );
+
+        // Sync title update to Convex
+        const convexId = convexIdMapRef.current.get(threadLocalId);
+        const currentMeta = threadMetas.find((t) => t.id === threadLocalId);
+        if (convexId && currentMeta?.title === 'New Chat') {
+          const newTitle = content.substring(0, 50) + (content.length > 50 ? '...' : '');
+          convexUpdateTitle({ threadId: convexId, title: newTitle }).catch((err) =>
+            console.error('[chat-store] Failed to update thread title in Convex:', err)
+          );
+        }
       }
 
       const context = assembleContext();
@@ -339,36 +439,41 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
         { body: { context } }
       );
     },
-    [activeThreadId, assembleContext, chat]
+    [activeThreadId, assembleContext, chat, convexCreate, convexUpdateTitle, threadMetas]
   );
 
   // ─── Memoize stable context value ───
-  const stableValue = useMemo<ChatStoreContextValue>(() => ({
-    threadMetas,
-    activeThreadId,
-    selectedText,
-    setSelectedText,
-    createThread,
-    switchThread,
-    deleteThread,
-    sendMessage: handleSendMessage,
-    editorRef,
-  }), [
-    threadMetas,
-    activeThreadId,
-    selectedText,
-    setSelectedText,
-    createThread,
-    switchThread,
-    deleteThread,
-    handleSendMessage,
-  ]);
+  const stableValue = useMemo<ChatStoreContextValue>(
+    () => ({
+      threadMetas,
+      activeThreadId,
+      selectedText,
+      setSelectedText,
+      createThread,
+      switchThread,
+      deleteThread,
+      sendMessage: handleSendMessage,
+      editorRef,
+    }),
+    [
+      threadMetas,
+      activeThreadId,
+      selectedText,
+      createThread,
+      switchThread,
+      deleteThread,
+      handleSendMessage,
+    ]
+  );
 
   // ─── Memoize volatile context value ───
-  const streamValue = useMemo<ChatStreamContextValue>(() => ({
-    messages: chat.messages,
-    status: chat.status,
-  }), [chat.messages, chat.status]);
+  const streamValue = useMemo<ChatStreamContextValue>(
+    () => ({
+      messages: chat.messages,
+      status: chat.status,
+    }),
+    [chat.messages, chat.status]
+  );
 
   return (
     <ChatStoreContext.Provider value={stableValue}>
