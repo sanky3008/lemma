@@ -185,16 +185,19 @@ IMPORTANT: For single/range edits, you may only edit the active document. Do NOT
 
       askQuestion: tool({
         description:
-          'Ask the user a clarifying question with multiple-choice options. Use this when you need more information before proceeding.',
+          'Ask the user clarifying questions using a structured interface. Use this when you need more information or specific requirements before proceeding. You can ask multiple related questions in one turn.',
         inputSchema: z.object({
-          question: z.string().describe('The question to ask'),
-          options: z.array(z.string()).describe('Available options for the user to choose from'),
+          questions: z.array(z.object({
+            id: z.string().describe('Unique identifier for this question'),
+            text: z.string().describe('The question text'),
+            type: z.enum(['single', 'multiple']).describe('Whether the user can pick one or multiple options'),
+            options: z.array(z.string()).describe('Available choices'),
+          })).min(1),
         }),
-        execute: async ({ question, options }) => {
+        execute: async ({ questions }) => {
           return {
             type: 'question' as const,
-            question,
-            options,
+            questions,
           };
         },
       }),

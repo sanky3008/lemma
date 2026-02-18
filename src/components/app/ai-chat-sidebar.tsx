@@ -1,6 +1,4 @@
-'use client';
-
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { UIMessage } from 'ai';
@@ -16,10 +14,18 @@ import {
   X,
   ChevronDown,
   Loader2,
+  Check,
 } from 'lucide-react';
 import { useChatStore } from '@/lib/ai/chat-store';
 import { useDocStore } from '@/lib/doc-store';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Label } from '@/components/ui/label';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
 
 const toolIcons: Record<string, React.ReactNode> = {
   webSearch: <Globe className="size-3.5" />,
@@ -64,54 +70,135 @@ function ToolInvocationPart({ part }: { part: any }) {
   );
 }
 
+interface Question {
+  id: string;
+  text: string;
+  type: 'single' | 'multiple';
+  options: string[];
+}
+
 function QuestionFromTool({
   output,
   onAnswer,
 }: {
-  output: { question: string; options: string[] };
+  output: { questions: Question[] };
   onAnswer: (answer: string) => void;
 }) {
-  const [customText, setCustomText] = useState('');
+  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
+  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>({});
+
+  const isComplete = useMemo(() => {
+    return output.questions.every((q) => {
+      const ans = answers[q.id];
+      if (q.type === 'single') return !!ans;
+      if (q.type === 'multiple') return Array.isArray(ans) && ans.length > 0;
+      return false;
+    });
+  }, [output.questions, answers]);
+
+  const toggleOption = (qId: string, option: string) => {
+    setAnswers((prev) => {
+      const current = (prev[qId] as string[]) || [];
+      if (current.includes(option)) {
+        return { ...prev, [qId]: current.filter((o) => o !== option) };
+      }
+      return { ...prev, [qId]: [...current, option] };
+    });
+  };
+
+  const handleReply = () => {
+    if (!isComplete) return;
+
+    const summary = output.questions
+      .map((q) => {
+        let text = answers[q.id];
+        if (Array.isArray(text)) text = text.join(', ');
+        const custom = customAnswers[q.id];
+        return `${q.text}\nAnswer: ${text}${custom ? ` (Custom: ${custom})` : ''}`;
+      })
+      .join('\n\n');
+
+    onAnswer(summary);
+  };
 
   return (
-    <div className="rounded-lg border bg-card p-3 space-y-2">
-      <p className="text-sm font-medium">{output.question}</p>
-      <div className="flex flex-wrap gap-1.5">
-        {output.options.map((option: string) => (
-          <button
-            key={option}
-            onClick={() => onAnswer(option)}
-            className="rounded-full border bg-background px-3 py-1 text-xs hover:bg-accent transition-colors"
-          >
-            {option}
-          </button>
+    <Card className="border-primary/20 bg-muted/30 shadow-sm overflow-hidden mb-4">
+      <CardHeader className="flex flex-row items-center gap-2 p-3 pb-2 space-y-0">
+        <div className="bg-primary/10 p-1.5 rounded-full">
+          <HelpCircle className="size-4 text-primary" />
+        </div>
+        <CardTitle className="text-xs font-semibold tracking-tight text-primary uppercase">
+          Clarification Needed
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-3 pt-0 space-y-4">
+        {output.questions.map((q) => (
+          <div key={q.id} className="space-y-2.5">
+            <p className="text-sm font-medium leading-snug">{q.text}</p>
+
+            {q.type === 'single' ? (
+              <RadioGroup
+                value={answers[q.id] as string}
+                onValueChange={(val) => setAnswers((prev) => ({ ...prev, [q.id]: val }))}
+                className="grid grid-cols-1 gap-2"
+              >
+                {q.options.map((opt) => (
+                  <div key={opt} className="flex items-center space-x-2">
+                    <RadioGroupItem value={opt} id={`${q.id}-${opt}`} className="size-4" />
+                    <Label
+                      htmlFor={`${q.id}-${opt}`}
+                      className="text-xs font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer py-1 block w-full"
+                    >
+                      {opt}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+            ) : (
+              <div className="grid grid-cols-1 gap-2">
+                {q.options.map((opt) => {
+                  const isChecked = (answers[q.id] as string[])?.includes(opt);
+                  return (
+                    <div key={opt} className="flex items-center space-x-2">
+                      <Checkbox
+                        id={`${q.id}-${opt}`}
+                        checked={isChecked}
+                        onCheckedChange={() => toggleOption(q.id, opt)}
+                        className="size-4"
+                      />
+                      <Label
+                        htmlFor={`${q.id}-${opt}`}
+                        className="text-xs font-normal leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer py-1 block w-full"
+                      >
+                        {opt}
+                      </Label>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="pt-1">
+              <Input
+                placeholder="Other details (optional)..."
+                value={customAnswers[q.id] || ''}
+                onChange={(e) => setCustomAnswers(prev => ({ ...prev, [q.id]: e.target.value }))}
+                className="h-8 text-xs bg-background/50 border-dashed"
+              />
+            </div>
+          </div>
         ))}
-      </div>
-      <div className="flex gap-1.5">
-        <input
-          type="text"
-          value={customText}
-          onChange={(e) => setCustomText(e.target.value)}
-          placeholder="Or type a custom answer..."
-          className="flex-1 rounded-md border bg-background px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-ring"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && customText.trim()) {
-              onAnswer(customText.trim());
-            }
-          }}
-        />
-        {customText.trim() && (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 px-2"
-            onClick={() => onAnswer(customText.trim())}
-          >
-            <Send className="size-3" />
-          </Button>
-        )}
-      </div>
-    </div>
+
+        <Button
+          onClick={handleReply}
+          disabled={!isComplete}
+          className="w-full h-8 text-xs font-medium gap-1.5 mt-2"
+        >
+          <Check className="size-3.5" />
+          Submit Clarifications
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 

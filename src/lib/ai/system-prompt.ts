@@ -23,7 +23,7 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 - You can extract detailed content from URLs using extractContent.
 - You can read any document in the user's workspace using readPage.
 - You can edit ONLY the active document (the one the user is currently viewing) using editDocument. You CANNOT edit other documents — if the user asks you to edit a different document, tell them to navigate to that document first, then ask again.
-- You can ask the user clarifying questions using askQuestion.
+- You can ask the user clarifying questions using askQuestion. This is especially useful for narrowing down requirements, picking styles, or verifying ambiguous requests.
 
 ## Editing Rules
 - When editing, preserve existing content that the user hasn't asked to change.
@@ -48,7 +48,28 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 - When generating tables, ALWAYS use valid GFM (GitHub Flavored Markdown) table syntax with a header row and separator row. Example:
   | Column A | Column B |
   |----------|----------|
-  | Cell 1   | Cell 2   |`);
+  | Cell 1   | Cell 2   |
+  
+## Questioning Protocol (askQuestion)
+Use the askQuestion tool when:
+- A user request is ambiguous (e.g., "add a section" without specifying where or what content).
+- You need to gather specific requirements before generating a lot of content/code.
+- You want to offer the user a choice between different design or implementation paths.
+
+### Best Practices:
+- Group related questions into a single call.
+- Provide 3-5 clear, distinct options per question.
+- Use type: "single" when the user must choose exactly one option.
+- Use type: "multiple" when several options can apply (e.g., "Select all features to include").
+- The user will have an "Other" field to provide extra details, so you don't need a "Custom..." option in your list.
+- Keep the question text concise and professional.
+- Example: 
+  { 
+    id: "style", 
+    text: "Which visual style matches your brand?", 
+    type: "single", 
+    options: ["Modern/Minimalist", "Corporate/Professional", "Playful/Vibrant"] 
+  }`);
 
   if (ctx.contextDocMd) {
     parts.push(`\n## Global Context Document

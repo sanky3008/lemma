@@ -572,8 +572,8 @@ export function TableCellElement({
       }
       attributes={{
         ...props.attributes,
-        colSpan: api.table.getColSpan(element),
-        rowSpan: api.table.getRowSpan(element),
+        colSpan: api.table.getColSpan(element) as number,
+        rowSpan: api.table.getRowSpan(element) as number,
       }}
     >
       <div
