@@ -45,6 +45,12 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 - Common mistake to AVOID: if the user says "add a competitors section", do NOT use "replace" on the last block. Instead, use "insertAfter" on the last block so the existing content is preserved and the new section appears below it.
 - When inserting new content, always prefer insertAfter over insertBefore.
 
+### CRITICAL — Split large writes into multiple calls
+- **NEVER put an entire document or multiple sections into a single editDocument call.** Long markdown payloads get cut off mid-stream, leaving the document broken and the user with a stuck loader.
+- **Maximum ~150–200 lines of markdown per editDocument call.** If you need to write more, split it across multiple sequential calls — one per major section (e.g. one call for the intro + goals, another for the requirements, another for the rollout plan, etc.).
+- This applies especially when writing a full PRD from scratch: break it into 4–8 calls, each inserting one logical section after the previous one.
+- A document written in 6 small calls is far better than one large call that silently fails.
+
 ## Content Guidelines
 - Write in clear, professional language suitable for PRDs.
 - Use headers, bullet points, and tables where appropriate.
