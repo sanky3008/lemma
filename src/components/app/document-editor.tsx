@@ -50,7 +50,6 @@ const plugins = [
     ...MarkdownKit,
     NodeIdPlugin.configure({
         options: {
-            normalizeInitialValue: true,
             reuseId: true,
         },
     }),
@@ -221,18 +220,30 @@ export function DocumentEditor({
         [renameDoc]
     );
 
+    const savingStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
     const handleContentChange = useCallback(
         (content: any[]) => {
             const docId = activeDocIdRef.current;
             if (!docId) return;
 
-            setSaveStatus('saving');
+            // Debounce the 'saving' indicator to avoid a re-render on every keystroke
+            if (savingStatusTimeoutRef.current) {
+                clearTimeout(savingStatusTimeoutRef.current);
+            }
+            savingStatusTimeoutRef.current = setTimeout(() => {
+                setSaveStatus('saving');
+            }, 100);
 
             if (saveTimeoutRef.current) {
                 clearTimeout(saveTimeoutRef.current);
             }
 
             saveTimeoutRef.current = setTimeout(() => {
+                if (savingStatusTimeoutRef.current) {
+                    clearTimeout(savingStatusTimeoutRef.current);
+                    savingStatusTimeoutRef.current = null;
+                }
                 updateDocContent(docId, content);
                 setSaveStatus('saved');
                 setTimeout(() => setSaveStatus('idle'), 2000);
@@ -248,6 +259,9 @@ export function DocumentEditor({
             }
             if (titleTimeoutRef.current) {
                 clearTimeout(titleTimeoutRef.current);
+            }
+            if (savingStatusTimeoutRef.current) {
+                clearTimeout(savingStatusTimeoutRef.current);
             }
         };
     }, []);

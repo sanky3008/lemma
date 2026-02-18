@@ -7,16 +7,21 @@ import { CommentPlugin } from '@platejs/comment/react';
 import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { discussionPlugin } from './plugins/discussion-kit';
+import { useChatStore } from '@/lib/ai/chat-store';
 
 export function CommentsSync({ docId }: { docId: string }) {
     const editor = useEditorRef();
     const { tf } = useEditorPlugin(CommentPlugin);
+    const { commentsRef } = useChatStore();
     const comments = useQuery(api.comments.list, { documentId: docId });
     // Track which discussionIds were previously unresolved so we can detect transitions
     const prevResolvedRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
         if (!comments) return;
+
+        // Keep commentsRef up-to-date for assembleContext (zero re-renders)
+        commentsRef.current = comments;
 
         const discussionsMap = new Map<string, any>();
         const usersMap: Record<string, any> = {};
@@ -69,7 +74,7 @@ export function CommentsSync({ docId }: { docId: string }) {
         editor.setOption(discussionPlugin, 'users', usersMap);
         editor.setOption(discussionPlugin, 'documentId', docId);
 
-    }, [comments, editor, docId, tf]);
+    }, [comments, commentsRef, editor, docId, tf]);
 
     return null;
 }

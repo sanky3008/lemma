@@ -52,6 +52,8 @@ type ChatStoreContextValue = {
   deleteThread: (id: string) => void;
   sendMessage: (content: string) => void;
   editorRef: React.MutableRefObject<SlateEditor | null>;
+  /** Ref written by CommentsSync with raw Convex comments — zero re-renders */
+  commentsRef: React.MutableRefObject<any[] | undefined>;
 };
 
 // ─── Volatile context: streaming state (changes on every token) ───
@@ -92,16 +94,13 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
   const [selectedText, setSelectedText] = useState('');
   const editorRef = useRef<SlateEditor | null>(null);
+  const commentsRef = useRef<any[] | undefined>(undefined);
   const appliedEditsRef = useRef<Set<string>>(new Set());
 
   // Map from local clientId → Convex _id (persisted in a ref to avoid re-renders)
   const convexIdMapRef = useRef<Map<string, Id<'threads'>>>(new Map());
 
   const docStore = useDocStore();
-  const activeDocId = docStore.getActiveDoc()?.id;
-
-  // Fetch comments for the active document
-  const comments = useQuery(api.comments.list, activeDocId ? { documentId: activeDocId } : 'skip');
 
   // Fetch thread list from Convex
   const convexThreads = useQuery(api.threads.list);
@@ -154,7 +153,7 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
 
     let activeDocXml: string | null = null;
     if (activeDoc && editorRef.current) {
-      activeDocXml = serializeToXML(editorRef.current.children, comments ?? undefined);
+      activeDocXml = serializeToXML(editorRef.current.children, commentsRef.current);
     }
 
     let contextDocMd: string | null = null;
@@ -176,7 +175,7 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
       })),
       selectedText: selectedText || undefined,
     };
-  }, [docStore, selectedText, comments]);
+  }, [docStore, selectedText]);
 
   const applyEditsFromMessage = useCallback((message: UIMessage) => {
     if (appliedEditsRef.current.has(message.id)) return;
@@ -454,6 +453,7 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
       deleteThread,
       sendMessage: handleSendMessage,
       editorRef,
+      commentsRef,
     }),
     [
       threadMetas,
