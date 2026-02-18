@@ -82,14 +82,14 @@ function applySingleEdit(
   editor: SlateEditor,
   edit: Extract<EditInstruction, { mode: 'single' }>
 ): void {
-  console.log('applySingleEdit:', edit);
   const path = findNodePath(editor, edit.blockId);
   if (!path) {
-    console.warn(`Block ${edit.blockId} not found in editor`);
-    console.log('Available nodes:', editor.children.map((n: any) => ({ id: n.id, type: n.type })));
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`Block ${edit.blockId} not found in editor`);
+      console.log('Available nodes:', editor.children.map((n: any) => ({ id: n.id, type: n.type })));
+    }
     return;
   }
-  console.log('Found block at path:', path);
 
   switch (edit.action) {
     case 'replace': {
@@ -125,7 +125,9 @@ function applyRangeEdit(
   const startPath = findNodePath(editor, edit.startBlockId);
   const endPath = findNodePath(editor, edit.endBlockId);
   if (!startPath || !endPath) {
-    console.warn(`Range blocks not found: ${edit.startBlockId} -> ${edit.endBlockId}`);
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(`Range blocks not found: ${edit.startBlockId} -> ${edit.endBlockId}`);
+    }
     return;
   }
 

@@ -16,7 +16,7 @@ import {
   Loader2,
   Check,
 } from 'lucide-react';
-import { useChatStore } from '@/lib/ai/chat-store';
+import { useChatStore, useChatStream } from '@/lib/ai/chat-store';
 import { useDocStore } from '@/lib/doc-store';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -290,8 +290,6 @@ export function AIChatSidebar({ onClose }: { onClose: () => void }) {
   const {
     threadMetas,
     activeThreadId,
-    messages,
-    status,
     selectedText,
     setSelectedText,
     createThread,
@@ -299,6 +297,7 @@ export function AIChatSidebar({ onClose }: { onClose: () => void }) {
     deleteThread,
     sendMessage,
   } = useChatStore();
+  const { messages, status } = useChatStream();
   const { getActiveDoc } = useDocStore();
   const activeDoc = getActiveDoc();
 

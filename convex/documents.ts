@@ -132,6 +132,48 @@ export const getDocs = query({
     },
 });
 
+// Lightweight query: returns only document metadata (no content field).
+// Use this for sidebar listings and anywhere full content isn't needed.
+export const getDocsList = query({
+    args: {},
+    handler: async (ctx) => {
+        const user = await getUser(ctx);
+        if (!user) return [];
+
+        const docs = await ctx.db
+            .query("documents")
+            .withIndex("by_user", (q) => q.eq("userId", user._id))
+            .collect();
+
+        return docs.map((d) => ({
+            _id: d._id,
+            _creationTime: d._creationTime,
+            title: d.title,
+            folderId: d.folderId,
+            isContext: d.isContext,
+            isArchived: d.isArchived,
+            isPublished: d.isPublished,
+        }));
+    },
+});
+
+// Fetch a single document's content by ID.
+export const getDocContent = query({
+    args: { id: v.id("documents") },
+    handler: async (ctx, args) => {
+        const user = await getUser(ctx);
+        if (!user) return null;
+
+        const doc = await ctx.db.get(args.id);
+        if (!doc || doc.userId !== user._id) return null;
+
+        return {
+            _id: doc._id,
+            content: doc.content,
+        };
+    },
+});
+
 export const updateDoc = mutation({
     args: {
         id: v.id("documents"),

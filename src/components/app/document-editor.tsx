@@ -66,7 +66,7 @@ function PlateEditor({
     onAIClick?: () => void;
     aiSidebarOpen?: boolean;
 }) {
-    const chatStore = useChatStore();
+    const { editorRef, setSelectedText } = useChatStore();
 
     // ONLY use initialContent for hydration.
     // We do NOT want to update the editor value when initialContent changes
@@ -79,13 +79,13 @@ function PlateEditor({
 
     // Expose editor to chat store for AI edits
     useEffect(() => {
-        chatStore.editorRef.current = editor;
+        editorRef.current = editor;
         return () => {
-            if (chatStore.editorRef.current === editor) {
-                chatStore.editorRef.current = null;
+            if (editorRef.current === editor) {
+                editorRef.current = null;
             }
         };
-    }, [editor, chatStore.editorRef]);
+    }, [editor, editorRef]);
 
     // Track text selection for AI context
     const selectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -100,14 +100,14 @@ function PlateEditor({
             selectionTimeoutRef.current = setTimeout(() => {
                 const selection = editor.selection;
                 if (!selection || RangeApi.isCollapsed(selection)) {
-                    chatStore.setSelectedText('');
+                    setSelectedText('');
                     return;
                 }
                 try {
                     const text = editor.api.string(selection);
-                    chatStore.setSelectedText(text || '');
+                    setSelectedText(text || '');
                 } catch {
-                    chatStore.setSelectedText('');
+                    setSelectedText('');
                 }
             }, 500);
         };
@@ -119,7 +119,7 @@ function PlateEditor({
                 clearTimeout(selectionTimeoutRef.current);
             }
         };
-    }, [editor, chatStore]);
+    }, [editor, setSelectedText]);
 
     return (
         <Plate
@@ -179,6 +179,10 @@ export function DocumentEditor({
 
     const titleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+    // Keep a ref to active doc ID so callbacks don't depend on the full object
+    const activeDocIdRef = useRef<string | null>(activeDoc?.id ?? null);
+    activeDocIdRef.current = activeDoc?.id ?? null;
+
     // Sync local title when activeDoc changes
     useEffect(() => {
         if (activeDoc) {
@@ -190,22 +194,24 @@ export function DocumentEditor({
         (newTitle: string) => {
             setLocalTitle(newTitle);
 
-            if (!activeDoc) return;
+            const docId = activeDocIdRef.current;
+            if (!docId) return;
 
             if (titleTimeoutRef.current) {
                 clearTimeout(titleTimeoutRef.current);
             }
 
             titleTimeoutRef.current = setTimeout(() => {
-                renameDoc(activeDoc.id, newTitle);
+                renameDoc(docId, newTitle);
             }, 500);
         },
-        [activeDoc, renameDoc]
+        [renameDoc]
     );
 
     const handleContentChange = useCallback(
         (content: any[]) => {
-            if (!activeDoc) return;
+            const docId = activeDocIdRef.current;
+            if (!docId) return;
 
             setSaveStatus('saving');
 
@@ -214,12 +220,12 @@ export function DocumentEditor({
             }
 
             saveTimeoutRef.current = setTimeout(() => {
-                updateDocContent(activeDoc.id, content);
+                updateDocContent(docId, content);
                 setSaveStatus('saved');
                 setTimeout(() => setSaveStatus('idle'), 2000);
             }, 500);
         },
-        [activeDoc, updateDocContent]
+        [updateDocContent]
     );
 
     useEffect(() => {

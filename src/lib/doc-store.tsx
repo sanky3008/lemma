@@ -42,11 +42,29 @@ const DocStoreContext = createContext<DocStoreContextValue | null>(null);
 export function DocStoreProvider({ children }: { children: ReactNode }) {
     // 1. Fetch Data from Convex
     const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
+
+    // Lightweight metadata-only query (no content) — used for sidebar, getters, etc.
     const foldersRaw = useQuery(api.documents.getFolders);
-    const docsRaw = useQuery(api.documents.getDocs);
+    const docsListRaw = useQuery(api.documents.getDocsList);
 
     // 2. Local State for UI
     const [activeDocId, setActiveDocId] = useState<string | null>(null);
+
+    // Fetch only the active document's content (reactive, single-doc subscription)
+    const activeDocContent = useQuery(
+        api.documents.getDocContent,
+        activeDocId ? { id: activeDocId as Id<"documents"> } : "skip"
+    );
+
+    // Find the context doc ID from the metadata list to fetch its content separately
+    const contextDocId = useMemo(
+        () => docsListRaw?.find(d => d.isContext)?._id ?? null,
+        [docsListRaw]
+    );
+    const contextDocContent = useQuery(
+        api.documents.getDocContent,
+        contextDocId ? { id: contextDocId as Id<"documents"> } : "skip"
+    );
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -74,26 +92,27 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
     const updateDocMutation = useMutation(api.documents.updateDoc);
     const deleteDocMutation = useMutation(api.documents.deleteDoc);
 
-    // 4. Adapters
+    // 4. Adapters — docs now come from the lightweight list query (no content)
     const folders = useMemo(() => (foldersRaw || []).map(f => ({
         id: f._id,
         name: f.name,
         createdAt: f._creationTime
     })) as Folder[], [foldersRaw]);
 
-    const docs = useMemo(() => (docsRaw || []).map(d => ({
+    const docs = useMemo(() => (docsListRaw || []).map(d => ({
         id: d._id,
         folderId: d.folderId,
         title: d.title,
-        content: d.content,
+        // Content is NOT included in the list query.
+        // Only the active doc gets its content populated (see getActiveDoc).
+        content: [],
         isContext: d.isContext || false,
         createdAt: d._creationTime,
-        // using creation time as update time for now since we don't track updates yet
         updatedAt: d._creationTime
-    })) as Doc[], [docsRaw]);
+    })) as Doc[], [docsListRaw]);
 
     // Combine loading states
-    const isLoading = isAuthLoading || foldersRaw === undefined || docsRaw === undefined;
+    const isLoading = isAuthLoading || foldersRaw === undefined || docsListRaw === undefined;
 
     // --- Actions ---
 
@@ -166,12 +185,25 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
     }, [docs]);
 
     const getGlobalContextDoc = useCallback(() => {
-        return docs.find((d) => d.isContext);
-    }, [docs]);
+        const meta = docs.find((d) => d.isContext);
+        if (!meta) return undefined;
+        // Merge in content from the dedicated content query
+        return {
+            ...meta,
+            content: contextDocContent?.content ?? meta.content,
+        };
+    }, [docs, contextDocContent]);
 
     const getActiveDoc = useCallback(() => {
-        return docs.find((d) => d.id === activeDocId);
-    }, [docs, activeDocId]);
+        const meta = docs.find((d) => d.id === activeDocId);
+        if (!meta) return undefined;
+
+        // Merge in the content from the dedicated content query
+        return {
+            ...meta,
+            content: activeDocContent?.content ?? meta.content,
+        };
+    }, [docs, activeDocId, activeDocContent]);
 
     const getDocById = useCallback(
         (id: string) => {
@@ -235,4 +267,3 @@ export function useDocStore() {
     }
     return context;
 }
-

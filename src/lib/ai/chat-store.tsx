@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -72,11 +73,11 @@ function deleteThreadMessages(threadId: string) {
   localStorage.removeItem(THREAD_MESSAGES_PREFIX + threadId);
 }
 
+// ─── Stable context: things the editor needs (rarely changes) ───
+
 type ChatStoreContextValue = {
   threadMetas: ThreadMeta[];
   activeThreadId: string | null;
-  messages: UIMessage[];
-  status: string;
   selectedText: string;
   setSelectedText: (text: string) => void;
   createThread: () => string;
@@ -86,7 +87,15 @@ type ChatStoreContextValue = {
   editorRef: React.MutableRefObject<SlateEditor | null>;
 };
 
+// ─── Volatile context: streaming state (changes on every token) ───
+
+type ChatStreamContextValue = {
+  messages: UIMessage[];
+  status: string;
+};
+
 const ChatStoreContext = createContext<ChatStoreContextValue | null>(null);
+const ChatStreamContext = createContext<ChatStreamContextValue | null>(null);
 
 const chatTransport = new DefaultChatTransport({
   api: '/api/ai/chat',
@@ -143,7 +152,6 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
         id: d.id,
         title: d.title,
         folderId: d.folderId,
-        content: d.content,
       })),
       selectedText: selectedText || undefined,
     };
@@ -319,11 +327,10 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     [activeThreadId, assembleContext, chat]
   );
 
-  const value: ChatStoreContextValue = {
+  // ─── Memoize stable context value ───
+  const stableValue = useMemo<ChatStoreContextValue>(() => ({
     threadMetas,
     activeThreadId,
-    messages: chat.messages,
-    status: chat.status,
     selectedText,
     setSelectedText,
     createThread,
@@ -331,17 +338,52 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     deleteThread,
     sendMessage: handleSendMessage,
     editorRef,
-  };
+  }), [
+    threadMetas,
+    activeThreadId,
+    selectedText,
+    setSelectedText,
+    createThread,
+    switchThread,
+    deleteThread,
+    handleSendMessage,
+  ]);
+
+  // ─── Memoize volatile context value ───
+  const streamValue = useMemo<ChatStreamContextValue>(() => ({
+    messages: chat.messages,
+    status: chat.status,
+  }), [chat.messages, chat.status]);
 
   return (
-    <ChatStoreContext.Provider value={value}>{children}</ChatStoreContext.Provider>
+    <ChatStoreContext.Provider value={stableValue}>
+      <ChatStreamContext.Provider value={streamValue}>
+        {children}
+      </ChatStreamContext.Provider>
+    </ChatStoreContext.Provider>
   );
 }
 
+/**
+ * Access stable chat state (threads, actions, editorRef).
+ * Does NOT re-render on streaming token changes.
+ */
 export function useChatStore() {
   const context = useContext(ChatStoreContext);
   if (!context) {
     throw new Error('useChatStore must be used within a ChatStoreProvider');
+  }
+  return context;
+}
+
+/**
+ * Access volatile streaming state (messages, status).
+ * Only use in components that need to display streaming content (e.g., AIChatSidebar).
+ */
+export function useChatStream() {
+  const context = useContext(ChatStreamContext);
+  if (!context) {
+    throw new Error('useChatStream must be used within a ChatStoreProvider');
   }
   return context;
 }

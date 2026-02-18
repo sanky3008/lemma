@@ -3,10 +3,6 @@ import { streamText, tool, stepCountIs, convertToModelMessages } from 'ai';
 import { z } from 'zod';
 
 import { buildSystemPrompt } from '@/lib/ai/system-prompt';
-import {
-  createMarkdownEditor,
-  serializeToAnnotatedMarkdown,
-} from '@/lib/ai/serialize';
 
 export const maxDuration = 60;
 
@@ -14,12 +10,8 @@ export async function POST(req: Request) {
   const body = await req.json();
   const { messages, context } = body;
 
-  console.log('Received messages:', JSON.stringify(messages, null, 2));
-
   // Convert UIMessages to ModelMessages
   const modelMessages = await convertToModelMessages(messages);
-
-  console.log('Converted messages:', JSON.stringify(modelMessages, null, 2));
 
   const systemPrompt = buildSystemPrompt({
     contextDocMd: context?.contextDocMd ?? null,
@@ -30,7 +22,7 @@ export async function POST(req: Request) {
     selectedText: context?.selectedText,
   });
 
-  const allDocs: { id: string; title: string; folderId?: string; content: any[] }[] =
+  const allDocs: { id: string; title: string; folderId?: string }[] =
     context?.allDocs ?? [];
 
   const result = streamText({
@@ -104,7 +96,7 @@ model: openai('gpt-5.1'),
 
       readPage: tool({
         description:
-          'Read a document from the user\'s workspace by its title. Returns the document content as annotated markdown with block IDs.',
+          'Read a document from the user\'s workspace by its title. Returns the document content as annotated markdown with block IDs. Note: Only the currently active document\'s full content is available. For other documents, ask the user to open them first.',
         inputSchema: z.object({
           title: z.string().describe('The title of the document to read'),
         }),
@@ -120,12 +112,20 @@ model: openai('gpt-5.1'),
               content: `Document "${title}" not found. Available documents: ${available}`,
             };
           }
-          const editor = createMarkdownEditor();
-          const annotatedMd = serializeToAnnotatedMarkdown(editor, doc.content);
+          // If this is the active document, use the pre-serialized annotated markdown
+          const activeDocId = context?.activeDocId;
+          if (doc.id === activeDocId && context?.activeDocAnnotatedMd) {
+            return {
+              docId: doc.id,
+              title: doc.title,
+              content: context.activeDocAnnotatedMd,
+            };
+          }
+          // Non-active documents: content is not available without fetching
           return {
             docId: doc.id,
             title: doc.title,
-            content: annotatedMd,
+            content: `This document is not currently open. The active document's content is already provided in your context. Ask the user to open "${doc.title}" if they need you to read or edit it.`,
           };
         },
       }),
