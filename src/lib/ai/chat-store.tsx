@@ -26,6 +26,7 @@ import {
 import { applyEditsToEditor } from './edit-engine';
 import type { EditInstruction } from './types';
 import { useQuery, useMutation } from 'convex/react';
+import { useAuth } from '@clerk/nextjs';
 import { api } from '../../../convex/_generated/api';
 import type { Id } from '../../../convex/_generated/dataModel';
 
@@ -100,6 +101,7 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
   // Map from local clientId → Convex _id (persisted in a ref to avoid re-renders)
   const convexIdMapRef = useRef<Map<string, Id<'threads'>>>(new Map());
 
+  const { getToken } = useAuth();
   const docStore = useDocStore();
 
   // Fetch thread list from Convex
@@ -432,10 +434,11 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
       }
 
       const context = assembleContext();
+      const convexToken = await getToken({ template: 'convex' });
 
       chat.sendMessage(
         { text: content },
-        { body: { context } }
+        { body: { context: { ...context, convexToken } } }
       );
     },
     [activeThreadId, assembleContext, chat, convexCreate, convexUpdateTitle, threadMetas]

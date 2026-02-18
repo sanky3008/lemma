@@ -3,6 +3,7 @@ import { streamText, tool, stepCountIs, convertToModelMessages } from 'ai';
 import { z } from 'zod';
 
 import { buildSystemPrompt } from '@/lib/ai/system-prompt';
+import { serializeToAnnotatedMarkdown, createMarkdownEditor } from '@/lib/ai/serialize';
 
 export const maxDuration = 60;
 
@@ -97,7 +98,7 @@ export async function POST(req: Request) {
 
       readPage: tool({
         description:
-          'Read a document from the user\'s workspace by its title. Returns the document content as annotated markdown with block IDs. Note: Only the currently active document\'s full content is available. For other documents, ask the user to open them first.',
+          'Read any document from the user\'s workspace by its title. Returns the document content as annotated markdown with block IDs.',
         inputSchema: z.object({
           title: z.string().describe('The title of the document to read'),
         }),
@@ -122,12 +123,44 @@ export async function POST(req: Request) {
               content: context.activeDocAnnotatedMd,
             };
           }
-          // Non-active documents: content is not available without fetching
-          return {
-            docId: doc.id,
-            title: doc.title,
-            content: `This document is not currently open. The active document's content is already provided in your context. Ask the user to open "${doc.title}" if they need you to read or edit it.`,
-          };
+          // Non-active document: fetch content from Convex using the auth token
+          const convexToken = context?.convexToken;
+          if (!convexToken) {
+            return {
+              docId: doc.id,
+              title: doc.title,
+              content: `Unable to read "${doc.title}": authentication token not available.`,
+            };
+          }
+          try {
+            const { ConvexHttpClient } = await import('convex/browser');
+            const { api: convexApi } = await import('../../../../../convex/_generated/api');
+            const client = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+            client.setAuth(convexToken);
+            const result = await client.query(convexApi.documents.getDocContent, {
+              id: doc.id as any,
+            });
+            if (!result?.content) {
+              return {
+                docId: doc.id,
+                title: doc.title,
+                content: `Document "${doc.title}" has no content.`,
+              };
+            }
+            const mdEditor = createMarkdownEditor();
+            const annotatedMd = serializeToAnnotatedMarkdown(mdEditor, result.content);
+            return {
+              docId: doc.id,
+              title: doc.title,
+              content: annotatedMd,
+            };
+          } catch (error: any) {
+            return {
+              docId: doc.id,
+              title: doc.title,
+              content: `Failed to read "${doc.title}": ${error.message}`,
+            };
+          }
         },
       }),
 
