@@ -51,7 +51,7 @@ type ChatStoreContextValue = {
   createThread: () => string;
   switchThread: (id: string) => void;
   deleteThread: (id: string) => void;
-  sendMessage: (content: string) => void;
+  sendMessage: (content: string) => Promise<void>;
   editorRef: React.MutableRefObject<SlateEditor | null>;
   /** Ref written by CommentsSync with raw Convex comments — zero re-renders */
   commentsRef: React.MutableRefObject<any[] | undefined>;
@@ -384,7 +384,7 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
   );
 
   const handleSendMessage = useCallback(
-    (content: string) => {
+    async (content: string) => {
       let threadLocalId = activeThreadId;
 
       if (!threadLocalId) {
