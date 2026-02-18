@@ -31,7 +31,7 @@ export async function POST(req: Request) {
     model: openai('gpt-5.1'),
     system: systemPrompt,
     messages: modelMessages,
-    stopWhen: stepCountIs(10),
+    stopWhen: stepCountIs(40),
     tools: {
       webSearch: tool({
         description:
@@ -170,7 +170,9 @@ export async function POST(req: Request) {
 - "range": Replace a range of blocks from startBlockId to endBlockId
 - "newFile": Create a new document
 
-IMPORTANT: For single/range edits, you may only edit the active document. Do NOT attempt to edit other documents — if the user asks, tell them to open that document first.`,
+IMPORTANT: For single/range edits, you may only edit the active document. Do NOT attempt to edit other documents — if the user asks, tell them to open that document first.
+
+STEP LIMIT: You have a maximum of 40 steps total per response (across all tool calls). If you are making many edits and are approaching this limit (e.g. you have used ~35+ steps), stop calling editDocument, summarize what edits you were able to apply, and tell the user which changes still need to be made so they can ask you to continue.`,
         inputSchema: z.object({
           mode: z.enum(['single', 'range', 'newFile']),
           docId: z.string().optional().describe('Document ID (required for single/range modes — must be the active document)'),

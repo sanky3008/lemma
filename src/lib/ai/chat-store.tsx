@@ -71,7 +71,7 @@ const chatTransport = new DefaultChatTransport({
   api: '/api/ai/chat',
 });
 
-/** Convert UIMessages to the simplified format Convex stores */
+/** Convert UIMessages to the format Convex stores (includes tool calls) */
 function uiMessagesToConvex(messages: UIMessage[]) {
   return messages
     .filter((m) => m.role === 'user' || m.role === 'assistant')
@@ -81,11 +81,29 @@ function uiMessagesToConvex(messages: UIMessage[]) {
         .map((p: any) => p.text as string)
         .join('');
 
+      // Extract tool call parts to persist alongside the message
+      const toolCalls = m.parts
+        .filter((p: any) => p.type === 'dynamic-tool' || p.type?.startsWith('tool-'))
+        .map((p: any) => {
+          const name =
+            p.type === 'dynamic-tool'
+              ? (p.toolName ?? '')
+              : p.type.slice(5); // strip "tool-" prefix
+          return {
+            id: p.toolCallId ?? p.id ?? name,
+            name,
+            args: p.input ?? {},
+            status: p.state ?? 'output-available',
+            result: p.output !== undefined ? JSON.stringify(p.output) : undefined,
+          };
+        });
+
       return {
         id: m.id,
         role: m.role as 'user' | 'assistant',
         content,
         createdAt: Date.now(),
+        ...(toolCalls.length > 0 ? { toolCalls } : {}),
       };
     });
 }
@@ -350,13 +368,34 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     lastLoadedThreadRef.current = activeThreadId;
 
     // Convert Convex messages back to UIMessage format
-    const uiMessages: UIMessage[] = activeThreadData.messages.map((m) => ({
-      id: m.id,
-      role: m.role,
-      content: m.content,
-      parts: [{ type: 'text' as const, text: m.content }],
-      createdAt: new Date(m.createdAt),
-    }));
+    const uiMessages: UIMessage[] = activeThreadData.messages.map((m) => {
+      const parts: any[] = [];
+
+      // Restore tool call parts before the text (mirrors original stream order)
+      if (m.toolCalls && m.toolCalls.length > 0) {
+        for (const tc of m.toolCalls) {
+          parts.push({
+            type: `tool-${tc.name}`,
+            toolCallId: tc.id,
+            toolName: tc.name,
+            input: tc.args,
+            state: 'output-available' as const,
+            output: tc.result !== undefined ? JSON.parse(tc.result) : undefined,
+          });
+        }
+      }
+
+      // Always include a text part (may be empty string for tool-only messages)
+      parts.push({ type: 'text' as const, text: m.content });
+
+      return {
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        parts,
+        createdAt: new Date(m.createdAt),
+      };
+    });
 
     if (uiMessages.length > 0) {
       chat.setMessages(uiMessages);

@@ -25,7 +25,7 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 - You can read any document in the user's workspace using readPage.
 - You can edit ONLY the active document (the one the user is currently viewing) using editDocument. You CANNOT edit other documents — if the user asks you to edit a different document, tell them to navigate to that document first, then ask again.
 - You can ask the user clarifying questions using askQuestion. This is especially useful for narrowing down requirements, picking styles, or verifying ambiguous requests.
-- You can resolve comments using resolveComment.
+- You can resolve comments using resolveComment. **IMPORTANT: NEVER call resolveComment without first editing the document to incorporate the feedback in that comment. Resolving without acting on the feedback is wrong.** The correct order is always: (1) read the comment, (2) edit the document to address the feedback, (3) then call resolveComment.
 
 ## Context Format
 - The active document is provided in XML format.
