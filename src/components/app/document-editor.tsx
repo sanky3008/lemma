@@ -181,7 +181,7 @@ export function DocumentEditor({
     onAIClick?: () => void;
     aiSidebarOpen?: boolean;
 }) {
-    const { getActiveDoc, renameDoc, updateDocContent } = useDocStore();
+    const { getActiveDoc, renameDoc, updateDocContent, isActiveDocLoading } = useDocStore();
     const activeDoc = getActiveDoc();
 
     const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>(
@@ -257,6 +257,18 @@ export function DocumentEditor({
             <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
                 <FileText className="size-12 opacity-30" />
                 <p className="text-sm">Select or create a document to get started</p>
+            </div>
+        );
+    }
+
+    // Don't mount the editor until content has loaded from Convex.
+    // initialContent is only read once at mount time (hydration), so mounting
+    // before content arrives would result in an empty editor that fires onChange
+    // with [] and overwrites real content in the database.
+    if (isActiveDocLoading) {
+        return (
+            <div className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground">
+                <p className="text-sm text-muted-foreground/50">Loading...</p>
             </div>
         );
     }

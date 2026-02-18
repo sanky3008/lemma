@@ -33,6 +33,7 @@ type DocStoreActions = {
     getDocById: (id: string) => Doc | undefined;
     getAllDocs: () => Doc[];
     isLoading: boolean;
+    isActiveDocLoading: boolean;
 };
 
 type DocStoreContextValue = AppState & DocStoreActions;
@@ -113,6 +114,9 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
 
     // Combine loading states
     const isLoading = isAuthLoading || foldersRaw === undefined || docsListRaw === undefined;
+
+    // True when the active doc's content hasn't loaded from Convex yet
+    const isActiveDocLoading = activeDocId !== null && activeDocContent === undefined;
 
     // --- Actions ---
 
@@ -235,6 +239,7 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
         getDocById,
         getAllDocs,
         isLoading,
+        isActiveDocLoading,
     }), [
         folders,
         docs,
@@ -252,7 +257,8 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
         getActiveDoc,
         getDocById,
         getAllDocs,
-        isLoading
+        isLoading,
+        isActiveDocLoading,
     ]);
 
     return (
