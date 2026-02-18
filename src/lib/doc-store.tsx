@@ -5,6 +5,7 @@ import {
     useCallback,
     useContext,
     useEffect,
+    useMemo,
     useState,
     type ReactNode,
 } from 'react';
@@ -74,13 +75,13 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
     const deleteDocMutation = useMutation(api.documents.deleteDoc);
 
     // 4. Adapters
-    const folders = (foldersRaw || []).map(f => ({
+    const folders = useMemo(() => (foldersRaw || []).map(f => ({
         id: f._id,
         name: f.name,
         createdAt: f._creationTime
-    })) as Folder[];
+    })) as Folder[], [foldersRaw]);
 
-    const docs = (docsRaw || []).map(d => ({
+    const docs = useMemo(() => (docsRaw || []).map(d => ({
         id: d._id,
         folderId: d.folderId,
         title: d.title,
@@ -89,7 +90,7 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
         createdAt: d._creationTime,
         // using creation time as update time for now since we don't track updates yet
         updatedAt: d._creationTime
-    })) as Doc[];
+    })) as Doc[], [docsRaw]);
 
     // Combine loading states
     const isLoading = isAuthLoading || foldersRaw === undefined || docsRaw === undefined;
@@ -183,7 +184,7 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
         return docs;
     }, [docs]);
 
-    const value: DocStoreContextValue = {
+    const value: DocStoreContextValue = useMemo(() => ({
         folders,
         docs,
         activeDocId,
@@ -202,7 +203,25 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
         getDocById,
         getAllDocs,
         isLoading,
-    };
+    }), [
+        folders,
+        docs,
+        activeDocId,
+        createFolder,
+        renameFolder,
+        deleteFolder,
+        createDoc,
+        renameDoc,
+        deleteDoc,
+        updateDocContent,
+        getDocsForFolder,
+        getRootDocs,
+        getGlobalContextDoc,
+        getActiveDoc,
+        getDocById,
+        getAllDocs,
+        isLoading
+    ]);
 
     return (
         <DocStoreContext.Provider value={value}>{children}</DocStoreContext.Provider>

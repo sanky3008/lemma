@@ -68,6 +68,10 @@ function PlateEditor({
 }) {
     const chatStore = useChatStore();
 
+    // ONLY use initialContent for hydration.
+    // We do NOT want to update the editor value when initialContent changes
+    // because that would cause a full re-render and cursor jump.
+    // The key={docId} on the parent component handles doc switching.
     const editor = usePlateEditor({
         plugins,
         value: initialContent,
