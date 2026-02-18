@@ -54,4 +54,20 @@ export default defineSchema({
         })),
         createdAt: v.number(), // Timestamp
     }).index("by_user", ["userId"]),
+
+    // Comments: Plate comments
+    comments: defineTable({
+        id: v.string(), // Plate comment ID
+        userId: v.string(),
+        documentId: v.string(), // Can be Convex ID or local UUID
+        discussionId: v.string(),
+        content: v.any(), // Value
+        isResolved: v.boolean(),
+        createdAt: v.number(),
+        context: v.optional(v.string())
+    })
+        .index("by_document", ["documentId"])
+        .index("by_discussion", ["discussionId"])
+        .index("by_user", ["userId"])
+        .index("by_plate_id", ["id"]),
 });

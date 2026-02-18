@@ -21,9 +21,12 @@ import {
   createMarkdownEditor,
   serializeDocToMarkdown,
   serializeToAnnotatedMarkdown,
+  serializeToXML,
 } from './serialize';
 import { applyEditsToEditor } from './edit-engine';
 import type { EditInstruction } from './types';
+import { useQuery } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
 
 const THREADS_KEY = 'thinkos-ai-threads';
 const THREAD_MESSAGES_PREFIX = 'thinkos-ai-msgs-';
@@ -109,6 +112,12 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
   const appliedEditsRef = useRef<Set<string>>(new Set());
 
   const docStore = useDocStore();
+  const activeDocId = docStore.getActiveDoc()?.id;
+
+  // Fetch comments for the active document
+  // We use "skip" if no active doc, but useQuery with skip is handled by conditional argument in Convex? 
+  // Convex useQuery hook: useQuery(api.foo.bar, args ?? "skip")
+  const comments = useQuery(api.comments.list, activeDocId ? { documentId: activeDocId } : "skip");
 
   // Load thread metas on mount
   useEffect(() => {
@@ -137,6 +146,11 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
       );
     }
 
+    let activeDocXml: string | null = null;
+    if (activeDoc && editorRef.current) {
+      activeDocXml = serializeToXML(editorRef.current.children, comments ?? undefined);
+    }
+
     let contextDocMd: string | null = null;
     if (contextDoc) {
       contextDocMd = serializeDocToMarkdown(contextDoc.content);
@@ -145,6 +159,7 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     return {
       activeDocId: activeDoc?.id ?? null,
       activeDocAnnotatedMd,
+      activeDocXml,
       activeDocTitle: activeDoc?.title ?? null,
       contextDocMd,
       directoryTree: buildDirectoryTree(folders, allDocs),
@@ -155,7 +170,7 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
       })),
       selectedText: selectedText || undefined,
     };
-  }, [docStore, selectedText]);
+  }, [docStore, selectedText, comments]);
 
   const applyEditsFromMessage = useCallback((message: UIMessage) => {
     // Avoid applying edits twice

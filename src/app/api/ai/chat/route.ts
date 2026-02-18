@@ -18,6 +18,7 @@ export async function POST(req: Request) {
     directoryTree: context?.directoryTree ?? '',
     activeDocId: context?.activeDocId ?? null,
     activeDocAnnotatedMd: context?.activeDocAnnotatedMd ?? null,
+    activeDocXml: context?.activeDocXml ?? null,
     activeDocTitle: context?.activeDocTitle ?? null,
     selectedText: context?.selectedText,
   });
@@ -26,7 +27,7 @@ export async function POST(req: Request) {
     context?.allDocs ?? [];
 
   const result = streamText({
-model: openai('gpt-5.1'),
+    model: openai('gpt-5.1'),
     system: systemPrompt,
     messages: modelMessages,
     stopWhen: stepCountIs(10),
@@ -201,6 +202,28 @@ IMPORTANT: For single/range edits, you may only edit the active document. Do NOT
           };
         },
       }),
+
+      resolveComment: tool({
+        description: 'Resolve a comment discussion in the active document. Use this when the user asks to resolve a comment or when you have addressed the feedback in a comment. The comment ID is required.',
+        inputSchema: z.object({
+          commentId: z.string().describe('The ID of the comment/thread to resolve (shown in the document XML or Comments Detail)'),
+        }),
+        execute: async ({ commentId }) => {
+          const { ConvexHttpClient } = await import('convex/browser');
+          const { api } = await import('../../../../../convex/_generated/api');
+
+          const client = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
+          try {
+            // commentId is the discussionId (matches the <comment id="..."> in the XML and Comments Detail)
+            await client.mutation(api.comments.resolve, { discussionId: commentId });
+            return { success: true, message: `Resolved comment thread ${commentId}` };
+          } catch (error: any) {
+            return { error: `Failed to resolve comment: ${error.message}` };
+          }
+        },
+      }),
+
     },
   });
 

@@ -135,6 +135,7 @@ export const discussionPlugin = createPlatePlugin({
     currentUserId: 'alice',
     discussions: discussionsData,
     users: usersData,
+    documentId: null as string | null, // Add documentId option
   },
 })
   .configure({

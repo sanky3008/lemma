@@ -55,6 +55,8 @@ export type ChatRequest = {
   context: {
     activeDocId: string | null;
     activeDocAnnotatedMd: string | null;
+    activeDocXml?: string | null;
+    activeDocComments?: any[];
     activeDocTitle: string | null;
     contextDocMd: string | null;
     directoryTree: string;

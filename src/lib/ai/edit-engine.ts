@@ -13,7 +13,6 @@ function findNodePath(editor: SlateEditor, blockId: string): number[] | null {
     editor.api.nodes({
       at: [],
       match: (n: any) => n.id === blockId,
-      mode: 'highest',
     })
   );
   if (entries.length > 0) {
@@ -78,6 +77,29 @@ export function applyEditsToEditor(
     .map((n: any) => n.id as string);
 }
 
+/**
+ * Remove a node at path. If the node is nested (e.g. a list item) and removing it
+ * would leave the parent empty, remove the parent instead to avoid normalizer artifacts.
+ */
+function removeNodeSafely(editor: SlateEditor, path: number[]): void {
+  if (path.length === 1) {
+    editor.tf.removeNodes({ at: path });
+    return;
+  }
+  // Check if parent will become empty after removal
+  const parentPath = path.slice(0, -1);
+  const parentEntry = Array.from(editor.api.nodes({ at: parentPath, match: (_n, p) => p.length === parentPath.length }))[0];
+  if (parentEntry) {
+    const parentNode = parentEntry[0] as any;
+    if (Array.isArray(parentNode.children) && parentNode.children.length === 1) {
+      // Only child — remove the whole parent (top-level ancestor)
+      editor.tf.removeNodes({ at: [path[0]] });
+      return;
+    }
+  }
+  editor.tf.removeNodes({ at: path });
+}
+
 function applySingleEdit(
   editor: SlateEditor,
   edit: Extract<EditInstruction, { mode: 'single' }>
@@ -93,26 +115,30 @@ function applySingleEdit(
 
   switch (edit.action) {
     case 'replace': {
-      if (!edit.markdown) return;
-      const nodes = deserializeMd(editor, edit.markdown);
-      editor.tf.removeNodes({ at: path });
-      editor.tf.insertNodes(nodes, { at: path });
+      removeNodeSafely(editor, path);
+      if (edit.markdown) {
+        const topPath = [path[0]];
+        const nodes = deserializeMd(editor, edit.markdown);
+        editor.tf.insertNodes(nodes, { at: topPath });
+      }
       break;
     }
     case 'insertAfter': {
       if (!edit.markdown) return;
       const nodes = deserializeMd(editor, edit.markdown);
-      editor.tf.insertNodes(nodes, { at: PathApi.next(path) });
+      const topPath = [path[0]];
+      editor.tf.insertNodes(nodes, { at: PathApi.next(topPath) });
       break;
     }
     case 'insertBefore': {
       if (!edit.markdown) return;
       const nodes = deserializeMd(editor, edit.markdown);
-      editor.tf.insertNodes(nodes, { at: path });
+      const topPath = [path[0]];
+      editor.tf.insertNodes(nodes, { at: topPath });
       break;
     }
     case 'delete': {
-      editor.tf.removeNodes({ at: path });
+      removeNodeSafely(editor, path);
       break;
     }
   }

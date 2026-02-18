@@ -12,17 +12,23 @@ import { CodeBlockKit } from '@/components/editor/plugins/code-block-kit';
 import { DndKit } from '@/components/editor/plugins/dnd-kit';
 import { MarkdownKit } from '@/components/editor/plugins/markdown-kit';
 import { MediaKit } from '@/components/editor/plugins/media-kit';
+import { CommentKit } from '@/components/editor/plugins/comment-kit';
+import { DiscussionKit } from '@/components/editor/plugins/discussion-kit';
 import { FloatingToolbarKit } from '@/components/editor/plugins/floating-toolbar-kit';
 import { LinkKit } from '@/components/editor/plugins/link-kit';
 import { ListKit } from '@/components/editor/plugins/list-kit';
 import { SlashKit } from '@/components/editor/plugins/slash-kit';
+import { SuggestionKit } from '@/components/editor/plugins/suggestion-kit';
 import { TableKit } from '@/components/editor/plugins/table-kit';
 import { Editor, EditorContainer } from '@/components/ui/editor';
 import { FixedToolbar } from '@/components/ui/fixed-toolbar';
 import { FixedToolbarButtons } from '@/components/ui/fixed-toolbar-buttons';
+import { FloatingToolbar } from '@/components/ui/floating-toolbar';
+import { FloatingToolbarButtons } from '@/components/ui/floating-toolbar-buttons';
 import { useDocStore } from '@/lib/doc-store';
 import { useChatStore } from '@/lib/ai/chat-store';
 import { FileText } from 'lucide-react';
+import { CommentsSync } from '../editor/comments-sync';
 
 const plugins = [
     ...BasicBlocksKit,
@@ -34,8 +40,11 @@ const plugins = [
     ...CalloutKit,
     // FixedToolbarKit removed - rendered manually
     ...MediaKit,
+    ...CommentKit,
+    ...DiscussionKit,
     ...FloatingToolbarKit,
     ...SlashKit,
+    ...SuggestionKit,
     ...BlockSelectionKit,
     ...DndKit,
     ...MarkdownKit,
@@ -128,6 +137,7 @@ function PlateEditor({
                 onContentChange(value);
             }}
         >
+            <CommentsSync docId={docId} />
             <div className="flex h-full flex-col">
                 <FixedToolbar>
                     <FixedToolbarButtons
@@ -154,6 +164,9 @@ function PlateEditor({
                 <div className="flex-1 overflow-y-auto">
                     <EditorContainer>
                         <Editor placeholder="Start writing..." />
+                        <FloatingToolbar>
+                            <FloatingToolbarButtons />
+                        </FloatingToolbar>
                     </EditorContainer>
                 </div>
             </div>

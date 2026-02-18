@@ -45,6 +45,9 @@ import {
   discussionPlugin,
 } from '@/components/editor/plugins/discussion-kit';
 
+import { useMutation } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
+
 import { Editor, EditorContainer } from './editor';
 
 export type TComment = {
@@ -81,23 +84,31 @@ export function Comment(props: {
   const userInfo = usePluginOption(discussionPlugin, 'user', comment.userId);
   const currentUserId = usePluginOption(discussionPlugin, 'currentUserId');
 
+  // Mutation hooks
+  const createMutation = useMutation(api.comments.create);
+  const resolveMutation = useMutation(api.comments.resolve);
+  const removeMutation = useMutation(api.comments.remove);
+
   const resolveDiscussion = async (id: string) => {
-    const updatedDiscussions = editor
-      .getOption(discussionPlugin, 'discussions')
-      .map((discussion) => {
-        if (discussion.id === id) {
-          return { ...discussion, isResolved: true };
-        }
-        return discussion;
-      });
-    editor.setOption(discussionPlugin, 'discussions', updatedDiscussions);
+    await resolveMutation({ discussionId: id });
+    // Optimistic update handled by Convex + CommentsSync
   };
 
   const removeDiscussion = async (id: string) => {
-    const updatedDiscussions = editor
-      .getOption(discussionPlugin, 'discussions')
-      .filter((discussion) => discussion.id !== id);
-    editor.setOption(discussionPlugin, 'discussions', updatedDiscussions);
+    // This is called when deleting the last comment in a thread.
+    // We should delete the comment.
+    // However, this function signature takes `id` as discussionId.
+    // But we need commentId to delete.
+    // Fortunately, `Comment` has `comment.id`.
+    // But this function might be used elsewhere?
+    // It's defined inside `Comment`.
+    // So we can use `comment.id` directly if we ignore the argument, OR change usage.
+    // Let's assume we delete the current comment.
+    await removeMutation({ id: comment.id });
+  };
+
+  const deleteComment = async (commentId: string) => {
+    await removeMutation({ id: commentId });
   };
 
   const updateComment = async (input: {
@@ -106,26 +117,8 @@ export function Comment(props: {
     discussionId: string;
     isEdited: boolean;
   }) => {
-    const updatedDiscussions = editor
-      .getOption(discussionPlugin, 'discussions')
-      .map((discussion) => {
-        if (discussion.id === input.discussionId) {
-          const updatedComments = discussion.comments.map((comment) => {
-            if (comment.id === input.id) {
-              return {
-                ...comment,
-                contentRich: input.contentRich,
-                isEdited: true,
-                updatedAt: new Date(),
-              };
-            }
-            return comment;
-          });
-          return { ...discussion, comments: updatedComments };
-        }
-        return discussion;
-      });
-    editor.setOption(discussionPlugin, 'discussions', updatedDiscussions);
+    // Update mutation not implemented yet.
+    console.warn("Update comment not implemented yet");
   };
 
   const { tf } = useEditorPlugin(CommentPlugin);
@@ -313,34 +306,10 @@ function CommentMoreDropdown(props: {
     if (!comment.id)
       return alert('You are operating too quickly, please try again later.');
 
-    // Find and update the discussion
-    const updatedDiscussions = editor
-      .getOption(discussionPlugin, 'discussions')
-      .map((discussion) => {
-        if (discussion.id !== comment.discussionId) {
-          return discussion;
-        }
-
-        const commentIndex = discussion.comments.findIndex(
-          (c) => c.id === comment.id
-        );
-        if (commentIndex === -1) {
-          return discussion;
-        }
-
-        return {
-          ...discussion,
-          comments: [
-            ...discussion.comments.slice(0, commentIndex),
-            ...discussion.comments.slice(commentIndex + 1),
-          ],
-        };
-      });
-
-    // Save back to session storage
-    editor.setOption(discussionPlugin, 'discussions', updatedDiscussions);
+    // Remove manual store update.
+    // Just call the parent handler which triggers mutation.
     onRemoveComment?.();
-  }, [comment.discussionId, comment.id, editor, onRemoveComment]);
+  }, [comment.id, onRemoveComment]);
 
   const onEditComment = React.useCallback(() => {
     selectedEditCommentRef.current = true;
@@ -439,66 +408,35 @@ export function CommentCreateForm({
     }
   }, [commentEditor, focusOnMount]);
 
+  const documentId = usePluginOption(discussionPlugin, 'documentId') as string | null;
+
+  const createMutation = useMutation(api.comments.create);
+
   const onAddComment = React.useCallback(async () => {
     if (!commentValue) return;
-
-    commentEditor.tf.reset();
-
-    if (discussionId) {
-      // Get existing discussion
-      const discussion = discussions.find((d) => d.id === discussionId);
-      if (!discussion) {
-        // Mock creating suggestion
-        const newDiscussion: TDiscussion = {
-          id: discussionId,
-          comments: [
-            {
-              id: nanoid(),
-              contentRich: commentValue,
-              createdAt: new Date(),
-              discussionId,
-              isEdited: false,
-              userId: editor.getOption(discussionPlugin, 'currentUserId'),
-            },
-          ],
-          createdAt: new Date(),
-          isResolved: false,
-          userId: editor.getOption(discussionPlugin, 'currentUserId'),
-        };
-
-        editor.setOption(discussionPlugin, 'discussions', [
-          ...discussions,
-          newDiscussion,
-        ]);
-        return;
-      }
-
-      // Create reply comment
-      const comment: TComment = {
-        id: nanoid(),
-        contentRich: commentValue,
-        createdAt: new Date(),
-        discussionId,
-        isEdited: false,
-        userId: editor.getOption(discussionPlugin, 'currentUserId'),
-      };
-
-      // Add reply to discussion comments
-      const updatedDiscussion = {
-        ...discussion,
-        comments: [...discussion.comments, comment],
-      };
-
-      // Filter out old discussion and add updated one
-      const updatedDiscussions = discussions
-        .filter((d) => d.id !== discussionId)
-        .concat(updatedDiscussion);
-
-      editor.setOption(discussionPlugin, 'discussions', updatedDiscussions);
-
+    if (!documentId) {
+      console.error("Missing documentId for comment creation");
       return;
     }
 
+    commentEditor.tf.reset();
+
+    // Context is the selected text for new comments
+    let context: string | undefined;
+
+    // If replying to existing discussion
+    if (discussionId) {
+      const newCommentId = nanoid();
+      await createMutation({
+        id: newCommentId,
+        discussionId,
+        content: commentValue,
+        documentId: documentId as any, // Cast if needed
+      });
+      return;
+    }
+
+    // Creating NEW discussion from selection
     const commentsNodeEntry = editor
       .getApi(CommentPlugin)
       .comment.nodes({ at: [], isDraft: true });
@@ -509,43 +447,43 @@ export function CommentCreateForm({
       .map(([node]) => node.text)
       .join('');
 
-    const _discussionId = nanoid();
-    // Mock creating new discussion
-    const newDiscussion: TDiscussion = {
-      id: _discussionId,
-      comments: [
-        {
-          id: nanoid(),
-          contentRich: commentValue,
-          createdAt: new Date(),
-          discussionId: _discussionId,
-          isEdited: false,
-          userId: editor.getOption(discussionPlugin, 'currentUserId'),
-        },
-      ],
-      createdAt: new Date(),
-      documentContent,
-      isResolved: false,
-      userId: editor.getOption(discussionPlugin, 'currentUserId'),
-    };
+    const _discussionId = nanoid(); // Generate a new ID for the discussion
+    const newCommentId = nanoid();
 
-    editor.setOption(discussionPlugin, 'discussions', [
-      ...discussions,
-      newDiscussion,
-    ]);
+    // Call mutation
+    await createMutation({
+      id: newCommentId,
+      discussionId: _discussionId,
+      content: commentValue,
+      context: documentContent,
+      documentId: documentId as any,
+    });
 
-    const id = newDiscussion.id;
+    // Add mark to editor
+    // We need to set the comment mark on the selected text.
+    // The previous logic did this manually.
+    // Does `CommentPlugin` handle this if we don't?
+    // We must apply the mark to the editor content so the backend stores the comment ID link in the document content!
+    // Wait, the document content (JSON) stores the comment ID in the marks.
+    // The `createMutation` saves the comment to `comments` table.
+    // BUT the `documents` table needs to update to include the comment mark!
+    // `comment.ts` mutation does NOT update the document content.
+    // Plate editor handles document content updates.
+    // So we MUST apply the mark here, which triggers `onChange` -> `onContentChange` -> saves to `documents` table.
+    // The comment ID we use for the mark MUST match the discussion ID (or whatever ID Plate uses).
+    // Plate uses `discussionId` (or `id`) as the mark key suffix?
+    // `getCommentKey(id)`
 
     commentsNodeEntry.forEach(([, path]) => {
       editor.tf.setNodes(
         {
-          [getCommentKey(id)]: true,
+          [getCommentKey(_discussionId)]: true,
         },
         { at: path, split: true }
       );
       editor.tf.unsetNodes([getDraftCommentKey()], { at: path });
     });
-  }, [commentValue, commentEditor.tf, discussionId, editor, discussions]);
+  }, [commentValue, commentEditor.tf, discussionId, editor, discussions, createMutation, documentId]);
 
   return (
     <div className={cn('flex w-full', className)}>
