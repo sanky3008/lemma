@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
     BookOpen,
     ChevronRight,
@@ -10,6 +10,7 @@ import {
     Pencil,
     FilePlus,
     FolderPlus,
+    Upload,
 } from 'lucide-react';
 
 import {
@@ -50,6 +51,7 @@ import {
     SidebarFooter,
 } from '@/components/ui/sidebar';
 import { useDocStore } from '@/lib/doc-store';
+import { markdownToNodes, htmlToNodes, docxToNodes } from '@/lib/import-to-nodes';
 import { Input } from '@/components/ui/input';
 import { UserButton, useUser } from '@clerk/nextjs';
 import { useConvexAuth, useMutation } from 'convex/react';
@@ -222,13 +224,49 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                                                 </ContextMenuContent>
                                             </ContextMenu>
 
-                                            <SidebarMenuAction
-                                                showOnHover
-                                                onClick={() => createDoc(folder.id)}
-                                                title="New Doc"
-                                            >
-                                                <Plus />
-                                            </SidebarMenuAction>
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <SidebarMenuAction showOnHover title="Add to folder">
+                                                        <Plus />
+                                                    </SidebarMenuAction>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent side="right" align="start">
+                                                    <DropdownMenuItem onClick={() => createDoc(folder.id)}>
+                                                        <FilePlus className="mr-2 size-4" />
+                                                        New Doc
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => {
+                                                        const input = document.createElement('input');
+                                                        input.type = 'file';
+                                                        input.accept = '.md,.mdx,.markdown,.html,.htm,.docx';
+                                                        input.multiple = true;
+                                                        input.style.display = 'none';
+                                                        document.body.appendChild(input);
+                                                        input.onchange = async (e) => {
+                                                            const files = (e.target as HTMLInputElement).files;
+                                                            document.body.removeChild(input);
+                                                            if (!files) return;
+                                                            for (const file of Array.from(files)) {
+                                                                const name = file.name;
+                                                                const title = name.replace(/\.(md|mdx|markdown|html?|docx)$/i, '');
+                                                                let nodes: any[];
+                                                                if (/\.(md|mdx|markdown)$/i.test(name)) {
+                                                                    nodes = markdownToNodes(await file.text());
+                                                                } else if (/\.html?$/i.test(name)) {
+                                                                    nodes = htmlToNodes(await file.text());
+                                                                } else {
+                                                                    nodes = await docxToNodes(await file.arrayBuffer());
+                                                                }
+                                                                await createDoc(folder.id, title, nodes);
+                                                            }
+                                                        };
+                                                        input.click();
+                                                    }}>
+                                                        <Upload className="mr-2 size-4" />
+                                                        Upload Files
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
 
                                             <CollapsibleContent>
                                                 <SidebarMenuSub>
