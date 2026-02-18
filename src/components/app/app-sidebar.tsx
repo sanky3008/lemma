@@ -5,7 +5,6 @@ import {
     BookOpen,
     ChevronRight,
     FileText,
-    FolderIcon,
     Plus,
     Trash2,
     Pencil,
@@ -170,14 +169,13 @@ export function AppSidebar(props: React.ComponentProps<typeof Sidebar>) {
                             {folders.map((folder) => {
                                 const docsInFolder = getDocsForFolder(folder.id);
                                 return (
-                                    <Collapsible key={folder.id} defaultOpen>
+                                    <Collapsible key={folder.id} defaultOpen className="group/collapsible">
                                         <SidebarMenuItem>
                                             <ContextMenu>
                                                 <ContextMenuTrigger asChild>
                                                     <CollapsibleTrigger asChild>
                                                         <SidebarMenuButton>
                                                             <ChevronRight className="transition-transform group-data-[state=open]/collapsible:rotate-90" />
-                                                            <FolderIcon className="size-4" />
                                                             {editingId === folder.id ? (
                                                                 <Input
                                                                     className="h-5 text-sm"
