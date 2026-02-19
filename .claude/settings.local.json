@@ -21,7 +21,8 @@
       "WebFetch(domain:blog.logrocket.com)",
       "WebFetch(domain:apitemplate.io)",
       "WebFetch(domain:pro.platejs.org)",
-      "WebFetch(domain:vercel.com)"
+      "WebFetch(domain:vercel.com)",
+      "Bash(npx convex dev:*)"
     ]
   }
 }

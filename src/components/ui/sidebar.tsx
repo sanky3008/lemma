@@ -27,13 +27,13 @@ import {
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
-const SIDEBAR_WIDTH = "16rem"
+const SIDEBAR_WIDTH = "164px"
 const SIDEBAR_WIDTH_MOBILE = "18rem"
 const SIDEBAR_WIDTH_ICON = "3rem"
 const SIDEBAR_KEYBOARD_SHORTCUT = "b"
-const SIDEBAR_MIN_WIDTH = 200
+const SIDEBAR_MIN_WIDTH = 164
 const SIDEBAR_MAX_WIDTH = 400
-const SIDEBAR_DEFAULT_WIDTH = 256 // 16rem
+const SIDEBAR_DEFAULT_WIDTH = 200; // User requested 164px
 
 type SidebarContextProps = {
   state: "expanded" | "collapsed"
@@ -140,7 +140,7 @@ function SidebarProvider({
         <div
           data-slot="sidebar-wrapper"
           style=
-            {
+          {
             {
               "--sidebar-width": `${sidebarWidth}px`,
               "--sidebar-width-icon": SIDEBAR_WIDTH_ICON,
@@ -578,7 +578,7 @@ function SidebarMenuAction({
         "peer-data-[size=lg]/menu-button:top-2.5",
         "group-data-[collapsible=icon]:hidden",
         showOnHover &&
-          "peer-data-[active=true]/menu-button:text-sidebar-accent-foreground group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 data-[state=open]:opacity-100 md:opacity-0",
+        "peer-data-[active=true]/menu-button:text-sidebar-accent-foreground group-focus-within/menu-item:opacity-100 group-hover/menu-item:opacity-100 data-[state=open]:opacity-100 md:opacity-0",
         className
       )}
       {...props}

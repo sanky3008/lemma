@@ -31,6 +31,9 @@ const messageSchema = v.object({
     }))),
     edits: v.optional(v.any()),
     question: v.optional(v.any()),
+    // JSON-serialized array of part-type tokens, e.g. ["tool-editDocument", "text"]
+    // Preserves interleaved order when restoring from Convex.
+    partOrder: v.optional(v.string()),
 });
 
 // List all threads for the current user (metadata only, no messages)

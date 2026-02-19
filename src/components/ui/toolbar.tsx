@@ -138,8 +138,7 @@ export const ToolbarButton = withTooltip(function ToolbarButton({
             size,
             variant,
           }),
-          isDropdown && 'justify-between gap-1 pr-1',
-          className
+          isDropdown && 'justify-between gap-1 pr-1 w-full'
         )}
         value={pressed ? 'single' : ''}
         {...props}
@@ -168,8 +167,7 @@ export const ToolbarButton = withTooltip(function ToolbarButton({
           size,
           variant,
         }),
-        isDropdown && 'pr-1',
-        className
+        isDropdown && 'pr-1 w-full'
       )}
       {...props}
     >
@@ -265,19 +263,36 @@ export function ToolbarToggleItem({
 export function ToolbarGroup({
   children,
   className,
-}: React.ComponentProps<'div'>) {
+  orientation = 'horizontal',
+}: React.ComponentProps<'div'> & { orientation?: 'horizontal' | 'vertical' }) {
   return (
     <div
       className={cn(
         'group/toolbar-group',
         'relative hidden has-[button]:flex',
+        orientation === 'vertical' ? 'flex-col items-center w-full' : '',
         className
       )}
     >
-      <div className="flex items-center">{children}</div>
+      <div
+        className={cn(
+          'flex items-center',
+          orientation === 'vertical' ? 'flex-col gap-1 w-full justify-center' : ''
+        )}
+      >
+        {children}
+      </div>
 
-      <div className="group-last/toolbar-group:hidden! mx-1.5 py-0.5">
-        <Separator orientation="vertical" />
+      <div
+        className={cn(
+          'group-last/toolbar-group:hidden!',
+          orientation === 'horizontal' ? 'mx-1.5 py-0.5' : 'my-1.5 px-0.5 w-full flex justify-center'
+        )}
+      >
+        <Separator
+          orientation={orientation === 'vertical' ? 'horizontal' : 'vertical'}
+          className={cn(orientation === 'vertical' ? 'w-8' : '')}
+        />
       </div>
     </div>
   );

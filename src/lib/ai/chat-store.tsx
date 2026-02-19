@@ -98,11 +98,19 @@ function uiMessagesToConvex(messages: UIMessage[]) {
           };
         });
 
+      // Record the sequence of part types so we can restore chronological order
+      const partOrder = JSON.stringify(
+        m.parts
+          .filter((p: any) => p.type === 'text' || p.type === 'dynamic-tool' || p.type?.startsWith('tool-'))
+          .map((p: any) => p.type)
+      );
+
       return {
         id: m.id,
         role: m.role as 'user' | 'assistant',
         content,
         createdAt: Date.now(),
+        partOrder,
         ...(toolCalls.length > 0 ? { toolCalls } : {}),
       };
     });
@@ -371,11 +379,14 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     const uiMessages: UIMessage[] = activeThreadData.messages.map((m) => {
       const parts: any[] = [];
 
-      // Restore tool call parts before the text (mirrors original stream order)
+      // Build lookup maps for text and tool calls so we can interleave by partOrder
+      const toolCallByType: Record<string, any[]> = {};
       if (m.toolCalls && m.toolCalls.length > 0) {
         for (const tc of m.toolCalls) {
-          parts.push({
-            type: `tool-${tc.name}`,
+          const key = `tool-${tc.name}`;
+          if (!toolCallByType[key]) toolCallByType[key] = [];
+          toolCallByType[key].push({
+            type: key,
             toolCallId: tc.id,
             toolName: tc.name,
             input: tc.args,
@@ -385,8 +396,38 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Always include a text part (may be empty string for tool-only messages)
-      parts.push({ type: 'text' as const, text: m.content });
+      // Use saved partOrder if available; otherwise default to tools-then-text
+      let order: string[] | null = null;
+      try {
+        if ((m as any).partOrder) order = JSON.parse((m as any).partOrder);
+      } catch { /* ignore */ }
+
+      if (order) {
+        // Track how many of each tool type we've consumed
+        const consumed: Record<string, number> = {};
+        for (const partType of order) {
+          if (partType === 'text') {
+            parts.push({ type: 'text' as const, text: m.content });
+          } else {
+            const idx = consumed[partType] ?? 0;
+            const part = toolCallByType[partType]?.[idx];
+            if (part) {
+              parts.push(part);
+              consumed[partType] = idx + 1;
+            }
+          }
+        }
+        // If text wasn't in order (old messages), append it
+        if (!order.includes('text') && m.content) {
+          parts.push({ type: 'text' as const, text: m.content });
+        }
+      } else {
+        // Fallback for messages saved before partOrder was added
+        for (const tcList of Object.values(toolCallByType)) {
+          parts.push(...tcList);
+        }
+        parts.push({ type: 'text' as const, text: m.content });
+      }
 
       return {
         id: m.id,
@@ -454,9 +495,9 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
           prev.map((t) =>
             t.id === threadLocalId && t.title === 'New Chat'
               ? {
-                  ...t,
-                  title: content.substring(0, 50) + (content.length > 50 ? '...' : ''),
-                }
+                ...t,
+                title: content.substring(0, 50) + (content.length > 50 ? '...' : ''),
+              }
               : t
           )
         );

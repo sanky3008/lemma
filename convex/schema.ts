@@ -49,7 +49,9 @@ export default defineSchema({
             }))),
             // Custom App Fields (Edits, Questions)
             edits: v.optional(v.any()),
-            question: v.optional(v.any())
+            question: v.optional(v.any()),
+            // Preserves interleaved order of text and tool-call parts on restore
+            partOrder: v.optional(v.string()),
 
         })),
         createdAt: v.number(), // Timestamp
