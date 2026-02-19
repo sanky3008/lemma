@@ -8,9 +8,9 @@ import { ChatStoreProvider } from '@/lib/ai/chat-store';
 import { SidebarInset, SidebarProvider, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { PanelLeft } from 'lucide-react';
 
-const AI_SIDEBAR_DEFAULT_WIDTH = 320;
+const AI_SIDEBAR_DEFAULT_WIDTH = 400;
 const AI_SIDEBAR_MIN_WIDTH = 260;
-const AI_SIDEBAR_MAX_WIDTH = 560;
+const AI_SIDEBAR_MAX_WIDTH = 800;
 
 export default function Page() {
   return (
