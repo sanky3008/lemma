@@ -23,6 +23,14 @@ export default function SignUpPage() {
   const [code, setCode] = React.useState("");
   const [error, setError] = React.useState("");
   const [loading, setLoading] = React.useState(false);
+  const [clerkTimeout, setClerkTimeout] = React.useState(false);
+
+  // If Clerk hasn't initialized after 8s, it's likely a DNS/network issue.
+  React.useEffect(() => {
+    if (isLoaded) return;
+    const timer = setTimeout(() => setClerkTimeout(true), 8000);
+    return () => clearTimeout(timer);
+  }, [isLoaded]);
 
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
@@ -234,6 +242,12 @@ export default function SignUpPage() {
           {error && (
             <p className="rounded-md bg-destructive/10 px-3 py-2 text-xs text-destructive">
               {error}
+            </p>
+          )}
+
+          {clerkTimeout && !isLoaded && (
+            <p className="rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+              Having trouble connecting. Try refreshing, or check your network/DNS settings.
             </p>
           )}
 
