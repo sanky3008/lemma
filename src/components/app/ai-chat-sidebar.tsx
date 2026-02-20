@@ -209,17 +209,20 @@ const MemoizedMarkdown = memo(
   (prevProps, nextProps) => prevProps.text === nextProps.text
 );
 
-const MessageItem = memo(
-  ({
-    message,
-    onAnswer,
-  }: {
-    message: UIMessage;
-    onAnswer: (answer: string) => void;
-  }) => {
+function MessageItem({
+  message,
+  onAnswer,
+}: {
+  message: UIMessage;
+  onAnswer: (answer: string) => void;
+}) {
     if (message.role === 'user') {
-      const textParts = message.parts.filter((p) => p.type === 'text');
-      const text = textParts.map((p) => (p as { text: string }).text).join('');
+      const partsArray = message.parts || [];
+      const textParts = partsArray.filter((p) => p.type === 'text');
+      const text = textParts.length > 0
+        ? textParts.map((p) => (p as { text: string }).text).join('')
+        : (message as any).content;
+
       return (
         <div className="flex justify-end">
           <div className="max-w-[85%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">
@@ -231,10 +234,17 @@ const MessageItem = memo(
 
     // Assistant message
     let editCount = 0;
+    const partsArray = message.parts || [];
+    const hasTextPart = partsArray.some((p) => p.type === 'text');
 
     return (
       <div className="space-y-1.5">
-        {message.parts.map((part, i) => {
+        {!hasTextPart && (message as any).content && (
+          <div className="text-sm [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0.5 [&_pre]:my-1 [&_pre]:rounded [&_pre]:bg-muted [&_pre]:p-2 [&_pre]:text-xs [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_h1]:my-1 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:my-1 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:my-1 [&_h3]:text-sm [&_h3]:font-medium [&_strong]:font-semibold [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground">
+            <MemoizedMarkdown text={(message as any).content} />
+          </div>
+        )}
+        {partsArray.map((part, i) => {
           if (part.type === 'text' && part.text) {
             return (
               <div
@@ -290,33 +300,7 @@ const MessageItem = memo(
         )}
       </div>
     );
-  },
-  (prevProps, nextProps) => {
-    // Custom comparison for memoization
-    if (prevProps.message.id !== nextProps.message.id) return false;
-
-    // Check if parts array length changed
-    if (prevProps.message.parts.length !== nextProps.message.parts.length) return false;
-
-    // Deep check parts equality
-    for (let i = 0; i < prevProps.message.parts.length; i++) {
-      const prevPart = prevProps.message.parts[i] as any;
-      const nextPart = nextProps.message.parts[i] as any;
-
-      if (prevPart.type !== nextPart.type) return false;
-
-      if (prevPart.type === 'text') {
-        if (prevPart.text !== nextPart.text) return false;
-      } else if (isToolPart(prevPart)) {
-        if (prevPart.state !== nextPart.state) return false;
-        // if it's a tool output, the tool output might change
-        if (JSON.stringify(prevPart.output) !== JSON.stringify(nextPart.output)) return false;
-      }
-    }
-
-    return true;
-  }
-);
+}
 
 export function AIChatSidebar({ onClose }: { onClose: () => void }) {
   const {
@@ -329,7 +313,7 @@ export function AIChatSidebar({ onClose }: { onClose: () => void }) {
     deleteThread,
     sendMessage,
   } = useChatStore();
-  const { messages, status } = useChatStream();
+  const { messages, status, error } = useChatStream();
   const { getActiveDoc } = useDocStore();
   const activeDoc = getActiveDoc();
 
@@ -473,7 +457,8 @@ export function AIChatSidebar({ onClose }: { onClose: () => void }) {
         {/* Streaming indicator */}
         {isStreaming &&
           messages.length > 0 &&
-          !messages[messages.length - 1]?.parts?.some(
+          !(messages[messages.length - 1] as any)?.content &&
+          !(messages[messages.length - 1]?.parts || []).some(
             (p) => p.type === 'text' && (p as any).text
           ) && (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -481,6 +466,14 @@ export function AIChatSidebar({ onClose }: { onClose: () => void }) {
               <span>Thinking...</span>
             </div>
           )}
+
+        {/* Error indicator */}
+        {error && (
+          <div className="rounded-md bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive">
+            <p className="font-medium">Something went wrong</p>
+            <p className="mt-0.5 opacity-80">{error.message || 'Failed to get a response. Please try again.'}</p>
+          </div>
+        )}
       </div>
 
       {/* Context chips */}

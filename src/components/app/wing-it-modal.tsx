@@ -197,6 +197,8 @@ export function WingItModal({ open, onClose, onGenerate, activeDoc }: WingItModa
             // Track active item IDs keyed by toolCallId (unique per invocation)
             const activeItemsById = new Map<string, string>();
 
+            let receivedDone = false;
+
             try {
                 const res = await fetch('/api/ai/wing-it', {
                     method: 'POST',
@@ -242,17 +244,15 @@ export function WingItModal({ open, onClose, onGenerate, activeDoc }: WingItModa
                     } else if (event.type === 'text' && typeof event.content === 'string') {
                         scratchpad += event.content;
                     } else if (event.type === 'done') {
+                        receivedDone = true;
                         setIsThinking(false);
                         setIsWritingNotes(false);
                         setPhase('preparing');
 
-                        // Capture final activity items for storage
-                        const finalActivityItems = [...activityItems]; // use local reference if needed, though setState is async
-                        // We extract what we can from the DOM or state...
                         if (currentRunId) {
                             updateResearch({
                                 id: currentRunId,
-                                activity: [], // Needs to be passed correctly, avoiding stale closure in a real app, but we try our best. 
+                                activity: [],
                                 scratchpad,
                                 status: 'preparing'
                             }).catch(console.error);
@@ -260,6 +260,22 @@ export function WingItModal({ open, onClose, onGenerate, activeDoc }: WingItModa
 
                         onGenerate(topic, qas, scratchpad, currentRunId);
                     }
+                }
+
+                // Stream ended without a 'done' event (e.g. Vercel timeout, network drop)
+                if (!receivedDone) {
+                    setIsThinking(false);
+                    setIsWritingNotes(false);
+                    setPhase('preparing');
+                    if (currentRunId) {
+                        updateResearch({
+                            id: currentRunId,
+                            activity: [],
+                            scratchpad,
+                            status: 'preparing'
+                        }).catch(console.error);
+                    }
+                    onGenerate(topic, qas, scratchpad, currentRunId);
                 }
             } catch (err: unknown) {
                 if (err instanceof Error && err.name !== 'AbortError') {

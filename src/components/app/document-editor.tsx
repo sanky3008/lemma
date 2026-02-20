@@ -202,8 +202,16 @@ function PlateEditor({
                     </EditorContainer>
                     {isBlank && onWingIt && (
                         <div
-                            className="absolute inset-x-0 flex flex-col items-center justify-center pointer-events-none"
-                            style={{ top: '0', pointerEvents: 'none' }}
+                            className="absolute inset-x-0 flex flex-col items-center justify-center cursor-text"
+                            style={{ top: '0' }}
+                            onClick={(e) => {
+                                // Don't dismiss if user clicked the Wing It button
+                                if ((e.target as HTMLElement).closest('button')) return;
+                                setIsBlank(false);
+                                // Focus the Slate editor
+                                const slateEl = (e.currentTarget.parentElement as HTMLElement)?.querySelector<HTMLElement>('[data-slate-editor]');
+                                slateEl?.focus();
+                            }}
                         >
                             <WingItEmptyState onWingIt={onWingIt} isContextDoc={activeDoc?.isContext} />
                         </div>

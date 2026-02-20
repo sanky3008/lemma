@@ -81,6 +81,12 @@ export function WingItEmptyState({ onWingIt, isContextDoc = false }: WingItEmpty
                         >
                             <span>Define Context Parameters</span>
                         </button>
+
+                        <div className="flex items-center gap-3 text-sm text-gray-400">
+                            <div className="h-px w-8 bg-gray-300" />
+                            <span>or click anywhere to start writing</span>
+                            <div className="h-px w-8 bg-gray-300" />
+                        </div>
                     </div>
                 </div>
             </div>
@@ -188,6 +194,12 @@ export function WingItEmptyState({ onWingIt, isContextDoc = false }: WingItEmpty
                         <span>Wing It</span>
                         <ArrowRight className="w-4 h-4" />
                     </button>
+
+                    <div className="flex items-center gap-3 text-sm text-gray-400">
+                        <div className="h-px w-8 bg-gray-300" />
+                        <span>or click anywhere to start writing</span>
+                        <div className="h-px w-8 bg-gray-300" />
+                    </div>
                 </div>
             </div>
         </div>

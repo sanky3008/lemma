@@ -1,5 +1,20 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
+
+// Admin-only: fix stuck runs (no auth required, internal only)
+export const adminFixStuckRuns = internalMutation({
+    args: {},
+    handler: async (ctx) => {
+        const allRuns = await ctx.db.query("wingItRuns").collect();
+        const stuckRuns = allRuns.filter(
+            (r) => r.status === "researching" && Date.now() - r.updatedAt > 10 * 60 * 1000
+        );
+        for (const run of stuckRuns) {
+            await ctx.db.patch(run._id, { status: "done", updatedAt: Date.now() });
+        }
+        return { fixed: stuckRuns.length };
+    },
+});
 
 export const getRun = query({
     args: { id: v.id("wingItRuns") },

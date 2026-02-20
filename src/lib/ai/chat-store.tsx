@@ -62,6 +62,7 @@ type ChatStoreContextValue = {
 type ChatStreamContextValue = {
   messages: UIMessage[];
   status: string;
+  error: Error | undefined;
 };
 
 const ChatStoreContext = createContext<ChatStoreContextValue | null>(null);
@@ -161,6 +162,12 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     // Populate the map
     for (const t of convexThreads) {
       convexIdMapRef.current.set(t._id, t._id as Id<'threads'>);
+    }
+
+    // Auto-select the most recent thread so messages load on page refresh
+    const mostRecent = metas[0]; // convexThreads is sorted by createdAt desc
+    if (mostRecent) {
+      setActiveThreadId(mostRecent.id);
     }
   }, [convexThreads]);
 
@@ -284,6 +291,9 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     transport: chatTransport,
     onFinish: (event) => {
       applyEditsFromMessage(event.message);
+    },
+    onError: (error) => {
+      console.error('[chat-store] useChat onError:', error);
     },
   });
 
@@ -523,14 +533,21 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
       }
 
       const context = assembleContext();
+      console.log('[chat-store] context assembled, getting token...');
       const convexToken = await getToken({ template: 'convex' });
+      console.log('[chat-store] token obtained, sending message...');
 
-      chat.sendMessage(
-        { text: content },
-        { body: { context: { ...context, convexToken } } }
-      );
+      try {
+        await chat.sendMessage(
+          { text: content },
+          { body: { context: { ...context, convexToken } } }
+        );
+        console.log('[chat-store] sendMessage resolved successfully');
+      } catch (err) {
+        console.error('[chat-store] chat.sendMessage error:', err);
+      }
     },
-    [activeThreadId, assembleContext, chat, convexCreate, convexUpdateTitle, threadMetas]
+    [activeThreadId, assembleContext, chat, convexCreate, convexUpdateTitle, threadMetas, getToken]
   );
 
   // ─── Memoize stable context value ───
@@ -563,8 +580,9 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     () => ({
       messages: chat.messages,
       status: chat.status,
+      error: chat.error,
     }),
-    [chat.messages, chat.status]
+    [chat.messages, chat.status, chat.error]
   );
 
   return (
