@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plate, usePlateEditor } from 'platejs/react';
 import { NodeIdPlugin, RangeApi } from 'platejs';
+import { deserializeMd } from '@platejs/markdown';
 
 import { BasicBlocksKit } from '@/components/editor/plugins/basic-blocks-kit';
 import { BasicMarksKit } from '@/components/editor/plugins/basic-marks-kit';
@@ -29,6 +30,13 @@ import { useDocStore } from '@/lib/doc-store';
 import { useChatStore } from '@/lib/ai/chat-store';
 import { FileText } from 'lucide-react';
 import { CommentsSync } from '../editor/comments-sync';
+import { WingItModal } from './wing-it-modal';
+import { flattenNestedLists, parseSSEStream } from '@/lib/ai/utils';
+import { buildDirectoryTree, createMarkdownEditor, serializeDocToMarkdown } from '@/lib/ai/serialize';
+import { useAuth } from '@clerk/nextjs';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
+import type { Id } from '../../../convex/_generated/dataModel';
 
 const plugins = [
     ...BasicBlocksKit,
@@ -55,6 +63,8 @@ const plugins = [
     }),
 ];
 
+// ── PlateEditor ──────────────────────────────────────────────────────────────
+
 function PlateEditor({
     docId,
     initialContent,
@@ -64,6 +74,8 @@ function PlateEditor({
     saveStatus,
     onAIClick,
     aiSidebarOpen,
+    onWingIt,
+    onEditorReady,
 }: {
     docId: string;
     initialContent: any[];
@@ -73,8 +85,15 @@ function PlateEditor({
     saveStatus: 'saved' | 'saving' | 'idle';
     onAIClick?: () => void;
     aiSidebarOpen?: boolean;
+    onWingIt?: () => void;
+    /** Called once the editor instance is ready so parent can stream into it */
+    onEditorReady?: (editor: ReturnType<typeof usePlateEditor>) => void;
 }) {
     const { editorRef, setSelectedText } = useChatStore();
+    const [isBlank, setIsBlank] = useState(() => {
+        const c = initialContent;
+        return c.length === 0 || (c.length === 1 && (c[0] as any)?.children?.[0]?.text === '');
+    });
 
     // ONLY use initialContent for hydration.
     // We do NOT want to update the editor value when initialContent changes
@@ -94,6 +113,11 @@ function PlateEditor({
             }
         };
     }, [editor, editorRef]);
+
+    // Expose editor to parent (DocumentEditor) for Wing It streaming
+    useEffect(() => {
+        onEditorReady?.(editor);
+    }, [editor, onEditorReady]);
 
     // Track text selection for AI context
     const selectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -134,6 +158,10 @@ function PlateEditor({
             editor={editor}
             onChange={({ value }) => {
                 onContentChange(value);
+                const blank =
+                    value.length === 0 ||
+                    (value.length === 1 && (value[0] as any)?.children?.[0]?.text === '');
+                setIsBlank(blank);
             }}
         >
             <CommentsSync docId={docId} />
@@ -160,18 +188,40 @@ function PlateEditor({
                     )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto">
+                <div className="flex-1 overflow-y-auto relative">
                     <EditorContainer>
-                        <Editor placeholder="Start writing..." />
+                        <Editor
+                            placeholder={isBlank && onWingIt ? '' : 'Start writing...'}
+                        />
                         <FloatingToolbar>
                             <FloatingToolbarButtons />
                         </FloatingToolbar>
                     </EditorContainer>
+                    {isBlank && onWingIt && (
+                        <div
+                            className="absolute inset-x-0 flex items-start px-16 sm:px-[max(64px,calc(50%-350px))]"
+                            style={{ top: '16px', pointerEvents: 'none' }}
+                        >
+                            <span className="text-sm text-muted-foreground/80" style={{ pointerEvents: 'none' }}>
+                                Feeling lazy? why don&apos;t you{' '}
+                                <button
+                                    type="button"
+                                    onClick={onWingIt}
+                                    className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors"
+                                    style={{ pointerEvents: 'auto' }}
+                                >
+                                    wing it
+                                </button>
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
         </Plate>
     );
 }
+
+// ── DocumentEditor ───────────────────────────────────────────────────────────
 
 export function DocumentEditor({
     onAIClick,
@@ -180,24 +230,43 @@ export function DocumentEditor({
     onAIClick?: () => void;
     aiSidebarOpen?: boolean;
 }) {
-    const { getActiveDoc, renameDoc, updateDocContent, isActiveDocLoading } = useDocStore();
+    const { getActiveDoc, getGlobalContextDoc, getAllDocs, folders, renameDoc, updateDocContent, isActiveDocLoading } = useDocStore();
+    const { getToken } = useAuth();
     const activeDoc = getActiveDoc();
 
-    const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>(
-        'idle'
-    );
+    const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'idle'>('idle');
     const [localTitle, setLocalTitle] = useState('');
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
     const titleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    const savingStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    // Tracks the last doc ID for which we synced localTitle — prevents Convex
+    // echo-backs from overwriting what the user is actively typing.
+    const lastSyncedDocIdRef = useRef<string | undefined>(undefined);
+
+    // Wing It state — managed here so we can stream directly into the editor
+    const [wingItOpen, setWingItOpen] = useState(false);
+    const editorInstanceRef = useRef<ReturnType<typeof usePlateEditor> | null>(null);
+    const wingItAbortRef = useRef<AbortController | null>(null);
+
+    // Context doc for Wing It
+    const contextDoc = getGlobalContextDoc();
+    const contextDocContent = useQuery(
+        api.documents.getDocContent,
+        contextDoc ? { id: contextDoc.id as Id<'documents'> } : 'skip'
+    );
+
+    const updateStatus = useMutation(api.wingIt.updateStatus);
 
     // Keep a ref to active doc ID so callbacks don't depend on the full object
     const activeDocIdRef = useRef<string | null>(activeDoc?.id ?? null);
     activeDocIdRef.current = activeDoc?.id ?? null;
 
-    // Sync local title when activeDoc changes
+    // Sync local title ONLY when switching to a different document.
+    // We track the last synced ID to ignore updates where only the title changed 
+    // (which happens when Convex echoes back our own typing).
     useEffect(() => {
-        if (activeDoc) {
+        if (activeDoc && activeDoc.id !== lastSyncedDocIdRef.current) {
+            lastSyncedDocIdRef.current = activeDoc.id;
             setLocalTitle(activeDoc.title);
         }
     }, [activeDoc?.id, activeDoc?.title]);
@@ -219,8 +288,6 @@ export function DocumentEditor({
         },
         [renameDoc]
     );
-
-    const savingStatusTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const handleContentChange = useCallback(
         (content: any[]) => {
@@ -252,17 +319,138 @@ export function DocumentEditor({
         [updateDocContent]
     );
 
+    // Called by PlateEditor once the editor instance is ready
+    const handleEditorReady = useCallback((editor: ReturnType<typeof usePlateEditor>) => {
+        editorInstanceRef.current = editor;
+    }, []);
+
+    // ── Phase 3: Write Document — streams into the editor ──────────────────────
+
+    const handleGenerate = useCallback(
+        async (topic: string, qas: { question: string; answer: string }[], scratchpad: string, runId: Id<'wingItRuns'> | null) => {
+            const docId = activeDocIdRef.current;
+            const editor = editorInstanceRef.current;
+            if (!docId || !editor) return;
+
+            wingItAbortRef.current?.abort();
+            wingItAbortRef.current = new AbortController();
+
+            // Assemble context
+            const allDocs = getAllDocs();
+            const convexToken = await getToken({ template: 'convex' });
+            let contextDocMd: string | undefined;
+            if (contextDocContent?.content && contextDocContent.content.length > 0) {
+                contextDocMd = serializeDocToMarkdown(contextDocContent.content);
+            }
+            const directoryTree = buildDirectoryTree(folders, allDocs);
+
+            const mdEditor = createMarkdownEditor();
+            let markdownBuffer = '';
+            let lastRenderTime = 0;
+            let lastSaveTime = 0;
+            let hasClosedModal = false;
+            // 1500ms between editor renders — keeps main thread free for user interaction
+            const RENDER_INTERVAL = 1500;
+            // 5s between mid-stream Convex saves — preserves content if tab is killed
+            const SAVE_INTERVAL = 5000;
+
+            // Yields to browser via setTimeout(0) before the heavy parse + setValue
+            const flushToEditor = (snapshot: string) => {
+                if (!snapshot) return;
+                setTimeout(() => {
+                    try {
+                        const nodes = deserializeMd(mdEditor, snapshot);
+                        const safe = flattenNestedLists(nodes as any[]);
+                        editor.tf.setValue(safe);
+                    } catch {
+                        // Partial markdown can fail to parse — skip until more arrives
+                    }
+                }, 0);
+            };
+
+            const saveToDisk = (content: string) => {
+                if (!content) return;
+                try {
+                    const nodes = deserializeMd(mdEditor, content);
+                    const safe = flattenNestedLists(nodes as any[]);
+                    updateDocContent(docId, safe);
+                } catch {
+                    // ignore
+                }
+            };
+
+            try {
+                const res = await fetch('/api/ai/wing-it', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        mode: 'writeDocument',
+                        topic,
+                        allQAs: qas,
+                        scratchpad,
+                        contextDocMd,
+                        directoryTree,
+                        allDocs: allDocs.map((d) => ({ id: d.id, title: d.title })),
+                        convexToken: convexToken ?? undefined,
+                    }),
+                    signal: wingItAbortRef.current.signal,
+                });
+
+                for await (const event of parseSSEStream(res)) {
+                    if (event.type === 'text' && typeof event.content === 'string') {
+                        // Close modal on first text chunk
+                        if (!hasClosedModal) {
+                            hasClosedModal = true;
+                            setWingItOpen(false);
+                        }
+                        markdownBuffer += event.content;
+
+                        const now = Date.now();
+
+                        // Throttled editor render — avoids blocking the main thread
+                        if (now - lastRenderTime > RENDER_INTERVAL) {
+                            lastRenderTime = now;
+                            flushToEditor(markdownBuffer);
+                        }
+
+                        // Separate mid-stream Convex save — preserves content on tab kill
+                        if (now - lastSaveTime > SAVE_INTERVAL) {
+                            lastSaveTime = now;
+                            saveToDisk(markdownBuffer);
+                        }
+                        if (runId) {
+                            updateStatus({ id: runId, status: 'done' }).catch(console.error);
+                        }
+                    } else if (event.type === 'done') {
+                        // Final flush + definitive Convex save
+                        flushToEditor(markdownBuffer);
+                        saveToDisk(markdownBuffer);
+                        setWingItOpen(false);
+                    }
+                }
+            } catch (err: unknown) {
+                if (err instanceof Error && err.name !== 'AbortError') {
+                    console.error('[WingIt] writeDocument error:', err);
+                    if (markdownBuffer) {
+                        flushToEditor(markdownBuffer);
+                        saveToDisk(markdownBuffer);
+                    }
+                    if (runId) {
+                        updateStatus({ id: runId, status: 'error' }).catch(console.error);
+                    }
+                }
+                setWingItOpen(false);
+            }
+        },
+        [getAllDocs, getToken, contextDocContent, folders, updateDocContent, updateStatus]
+    );
+
     useEffect(() => {
         return () => {
-            if (saveTimeoutRef.current) {
-                clearTimeout(saveTimeoutRef.current);
-            }
-            if (titleTimeoutRef.current) {
-                clearTimeout(titleTimeoutRef.current);
-            }
-            if (savingStatusTimeoutRef.current) {
-                clearTimeout(savingStatusTimeoutRef.current);
-            }
+            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+            if (titleTimeoutRef.current) clearTimeout(titleTimeoutRef.current);
+            if (savingStatusTimeoutRef.current) clearTimeout(savingStatusTimeoutRef.current);
+            wingItAbortRef.current?.abort();
         };
     }, []);
 
@@ -289,16 +477,25 @@ export function DocumentEditor({
 
     // Key forces remount when doc changes to reset editor state
     return (
-        <PlateEditor
-            key={activeDoc.id}
-            docId={activeDoc.id}
-            initialContent={activeDoc.content}
-            onContentChange={handleContentChange}
-            title={localTitle}
-            setTitle={handleTitleChange}
-            saveStatus={saveStatus}
-            onAIClick={onAIClick}
-            aiSidebarOpen={aiSidebarOpen}
-        />
+        <>
+            <PlateEditor
+                key={activeDoc.id}
+                docId={activeDoc.id}
+                initialContent={activeDoc.content}
+                onContentChange={handleContentChange}
+                title={localTitle}
+                setTitle={handleTitleChange}
+                saveStatus={saveStatus}
+                onAIClick={onAIClick}
+                aiSidebarOpen={aiSidebarOpen}
+                onWingIt={() => setWingItOpen(true)}
+                onEditorReady={handleEditorReady}
+            />
+            <WingItModal
+                open={wingItOpen}
+                onClose={() => setWingItOpen(false)}
+                onGenerate={handleGenerate}
+            />
+        </>
     );
 }

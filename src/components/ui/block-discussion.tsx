@@ -144,7 +144,7 @@ const BlockCommentContent = ({
         ([node]) =>
           TextApi.isText(node) &&
           editor.getApi(SuggestionPlugin).suggestion.nodeId(node) ===
-            activeSuggestion.suggestionId
+          activeSuggestion.suggestionId
       );
     }
 
@@ -316,28 +316,35 @@ const useResolvedDiscussion = (
 
   const discussions = usePluginOption(discussionPlugin, 'discussions');
 
-  commentNodes.forEach(([node]) => {
-    const id = api.comment.nodeId(node);
+  React.useEffect(() => {
     const map = getOption('uniquePathMap');
+    const newMap = new Map(map);
+    let changed = false;
 
-    if (!id) return;
+    commentNodes.forEach(([node]) => {
+      const id = api.comment.nodeId(node);
+      if (!id) return;
 
-    const previousPath = map.get(id);
+      const previousPath = newMap.get(id);
 
-    // If there are no comment nodes in the corresponding path in the map, then update it.
-    if (PathApi.isPath(previousPath)) {
-      const nodes = api.comment.node({ id, at: previousPath });
+      // If there are no comment nodes in the corresponding path in the map, then update it.
+      if (PathApi.isPath(previousPath)) {
+        const nodes = api.comment.node({ id, at: previousPath });
 
-      if (!nodes) {
-        setOption('uniquePathMap', new Map(map).set(id, blockPath));
-        return;
+        if (!nodes) {
+          newMap.set(id, blockPath);
+          changed = true;
+        }
+      } else {
+        newMap.set(id, blockPath);
+        changed = true;
       }
+    });
 
-      return;
+    if (changed) {
+      setOption('uniquePathMap', newMap);
     }
-    // TODO: fix throw error
-    setOption('uniquePathMap', new Map(map).set(id, blockPath));
-  });
+  }, [commentNodes, blockPath, api, getOption, setOption]);
 
   const commentsIds = new Set(
     commentNodes.map(([node]) => api.comment.nodeId(node)).filter(Boolean)
@@ -351,7 +358,7 @@ const useResolvedDiscussion = (
     .filter((item: TDiscussion) => {
       /** If comment cross blocks just show it in the first block */
       const commentsPathMap = getOption('uniquePathMap');
-      const firstBlockPath = commentsPathMap.get(item.id);
+      const firstBlockPath = commentsPathMap?.get(item.id) || blockPath;
 
       if (!firstBlockPath) return false;
       if (!PathApi.equals(firstBlockPath, blockPath)) return false;

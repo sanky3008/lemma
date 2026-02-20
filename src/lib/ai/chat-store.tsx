@@ -385,58 +385,67 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
         for (const tc of m.toolCalls) {
           const key = `tool-${tc.name}`;
           if (!toolCallByType[key]) toolCallByType[key] = [];
+          let parsedResult;
+          try {
+            parsedResult = tc.result !== undefined ? JSON.parse(tc.result) : undefined;
+          } catch (e) {
+            parsedResult = tc.result;
+          }
+
           toolCallByType[key].push({
             type: key,
             toolCallId: tc.id,
             toolName: tc.name,
             input: tc.args,
             state: 'output-available' as const,
-            output: tc.result !== undefined ? JSON.parse(tc.result) : undefined,
+            output: parsedResult,
           });
         }
-      }
 
-      // Use saved partOrder if available; otherwise default to tools-then-text
-      let order: string[] | null = null;
-      try {
-        if ((m as any).partOrder) order = JSON.parse((m as any).partOrder);
-      } catch { /* ignore */ }
+        // Use saved partOrder if available; otherwise default to tools-then-text
+        let order: string[] | null = null;
+        try {
+          if ((m as any).partOrder) order = JSON.parse((m as any).partOrder);
+        } catch { /* ignore */ }
 
-      if (order) {
-        // Track how many of each tool type we've consumed
-        const consumed: Record<string, number> = {};
-        for (const partType of order) {
-          if (partType === 'text') {
-            parts.push({ type: 'text' as const, text: m.content });
-          } else {
-            const idx = consumed[partType] ?? 0;
-            const part = toolCallByType[partType]?.[idx];
-            if (part) {
-              parts.push(part);
-              consumed[partType] = idx + 1;
+        if (order) {
+          // Track how many of each tool type we've consumed
+          const consumed: Record<string, number> = {};
+          for (const partType of order) {
+            if (partType === 'text') {
+              parts.push({ type: 'text' as const, text: m.content });
+            } else {
+              const idx = consumed[partType] ?? 0;
+              const part = toolCallByType[partType]?.[idx];
+              if (part) {
+                parts.push(part);
+                consumed[partType] = idx + 1;
+              }
             }
           }
-        }
-        // If text wasn't in order (old messages), append it
-        if (!order.includes('text') && m.content) {
+          // If text wasn't in order (old messages), append it
+          if (!order.includes('text') && m.content) {
+            parts.push({ type: 'text' as const, text: m.content });
+          }
+        } else {
+          // Fallback for messages saved before partOrder was added
+          for (const tcList of Object.values(toolCallByType)) {
+            parts.push(...tcList);
+          }
           parts.push({ type: 'text' as const, text: m.content });
         }
       } else {
-        // Fallback for messages saved before partOrder was added
-        for (const tcList of Object.values(toolCallByType)) {
-          parts.push(...tcList);
-        }
         parts.push({ type: 'text' as const, text: m.content });
       }
 
-      return {
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        parts,
-        createdAt: new Date(m.createdAt),
-      };
-    });
+        return {
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          parts,
+          createdAt: new Date(m.createdAt),
+        };
+      });
 
     if (uiMessages.length > 0) {
       chat.setMessages(uiMessages);

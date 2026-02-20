@@ -90,6 +90,7 @@ function MainContent() {
             </SidebarTrigger>
           </div>
         )}
+        {/* WingIt modal is now self-contained inside DocumentEditor */}
         <DocumentEditor
           onAIClick={() => setAiSidebarOpen(true)}
           aiSidebarOpen={aiSidebarOpen}

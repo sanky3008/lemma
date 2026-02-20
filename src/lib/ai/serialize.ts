@@ -1,11 +1,15 @@
 import { MarkdownPlugin, serializeMd } from '@platejs/markdown';
 import { createSlateEditor } from 'platejs';
 import remarkGfm from 'remark-gfm';
+import { BaseIndentPlugin } from '@platejs/indent';
+import { BaseListPlugin } from '@platejs/list';
 import type { Doc, Folder } from '../types';
 
 /**
  * Create a headless Slate editor with MarkdownPlugin for serialization.
- * Includes remarkGfm so that tables, strikethrough, etc. are properly handled.
+ * Must include BaseIndentPlugin + BaseListPlugin so that deserializeMd
+ * produces indent-list nodes (listStyleType / indent props on paragraphs)
+ * rather than classic ul/li/lic wrappers — matching the real Plate editor.
  */
 export function createMarkdownEditor() {
   return createSlateEditor({
@@ -15,6 +19,8 @@ export function createMarkdownEditor() {
           remarkPlugins: [remarkGfm],
         },
       }),
+      BaseIndentPlugin,
+      BaseListPlugin,
     ],
   });
 }

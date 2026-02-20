@@ -12,6 +12,7 @@ import type * as comments from "../comments.js";
 import type * as documents from "../documents.js";
 import type * as threads from "../threads.js";
 import type * as users from "../users.js";
+import type * as wingIt from "../wingIt.js";
 
 import type {
   ApiFromModules,
@@ -24,6 +25,7 @@ declare const fullApi: ApiFromModules<{
   documents: typeof documents;
   threads: typeof threads;
   users: typeof users;
+  wingIt: typeof wingIt;
 }>;
 
 /**

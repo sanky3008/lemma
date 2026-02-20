@@ -72,4 +72,24 @@ export default defineSchema({
         .index("by_discussion", ["discussionId"])
         .index("by_user", ["userId"])
         .index("by_plate_id", ["id"]),
+
+    // WingIt Runs: Stores WingIt sessions
+    wingItRuns: defineTable({
+        userId: v.string(), // Creator
+        topic: v.string(), // "What is this document about?"
+        status: v.string(), // 'questioning' | 'researching' | 'preparing' | 'done' | 'error'
+        qas: v.optional(v.array(v.object({
+            question: v.string(),
+            answer: v.string(),
+        }))),
+        activity: v.optional(v.array(v.object({
+            id: v.string(),
+            toolName: v.string(),
+            args: v.string(),
+            status: v.string(),
+        }))),
+        scratchpad: v.optional(v.string()),
+        createdAt: v.number(),
+        updatedAt: v.number(),
+    }).index("by_user", ["userId"]),
 });

@@ -30,8 +30,8 @@ export function GoogleButton({ mode }: GoogleButtonProps) {
           redirectUrlComplete: "/",
         });
       }
-    } catch {
-      // silently ignore — Clerk redirects on success
+    } catch (err) {
+      console.error("Google auth error:", err);
     }
   }
 
@@ -42,16 +42,11 @@ export function GoogleButton({ mode }: GoogleButtonProps) {
         variant="outline"
         className="w-full gap-2"
         onClick={handleGoogle}
+        disabled={mode === "signIn" ? !signInCtx.isLoaded : !signUpCtx.isLoaded}
       >
         <GoogleIcon />
         Continue with Google
       </Button>
-
-      <div className="flex items-center gap-3">
-        <div className="h-px flex-1 bg-border" />
-        <span className="text-xs text-muted-foreground">or</span>
-        <div className="h-px flex-1 bg-border" />
-      </div>
     </>
   );
 }

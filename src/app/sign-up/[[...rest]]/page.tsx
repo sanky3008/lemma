@@ -185,6 +185,12 @@ export default function SignUpPage() {
           <GoogleButton mode="signUp" />
         </div>
 
+        <div className="relative my-4 flex items-center gap-3">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-xs text-muted-foreground">or</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
         <form onSubmit={handleRegister} className="flex flex-col gap-4">
           <div className="flex gap-3">
             <div className="flex flex-1 flex-col gap-1.5">
