@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { UIMessage } from 'ai';
@@ -202,89 +202,121 @@ function QuestionFromTool({
   );
 }
 
-function MessageItem({
-  message,
-  onAnswer,
-}: {
-  message: UIMessage;
-  onAnswer: (answer: string) => void;
-}) {
-  if (message.role === 'user') {
-    const textParts = message.parts.filter((p) => p.type === 'text');
-    const text = textParts.map((p) => (p as { text: string }).text).join('');
-    return (
-      <div className="flex justify-end">
-        <div className="max-w-[85%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">
-          {text}
+const MemoizedMarkdown = memo(
+  ({ text }: { text: string }) => (
+    <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+  ),
+  (prevProps, nextProps) => prevProps.text === nextProps.text
+);
+
+const MessageItem = memo(
+  ({
+    message,
+    onAnswer,
+  }: {
+    message: UIMessage;
+    onAnswer: (answer: string) => void;
+  }) => {
+    if (message.role === 'user') {
+      const textParts = message.parts.filter((p) => p.type === 'text');
+      const text = textParts.map((p) => (p as { text: string }).text).join('');
+      return (
+        <div className="flex justify-end">
+          <div className="max-w-[85%] rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground">
+            {text}
+          </div>
         </div>
-      </div>
-    );
-  }
+      );
+    }
 
-  // Assistant message
-  let editCount = 0;
+    // Assistant message
+    let editCount = 0;
 
-  return (
-    <div className="space-y-1.5">
-      {message.parts.map((part, i) => {
-        if (part.type === 'text' && part.text) {
-          return (
-            <div
-              key={i}
-              className="text-sm [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0.5 [&_pre]:my-1 [&_pre]:rounded [&_pre]:bg-muted [&_pre]:p-2 [&_pre]:text-xs [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_h1]:my-1 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:my-1 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:my-1 [&_h3]:text-sm [&_h3]:font-medium [&_strong]:font-semibold [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground"
-            >
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {part.text}
-              </ReactMarkdown>
-            </div>
-          );
-        }
-
-        if (isToolPart(part)) {
-          const toolPart = part as any;
-          const toolName = getToolName(toolPart);
-
-          // Count edits
-          if (
-            toolName === 'editDocument' &&
-            toolPart.state === 'output-available'
-          ) {
-            editCount++;
-          }
-
-          // Show question form for askQuestion tool
-          if (
-            toolName === 'askQuestion' &&
-            toolPart.state === 'output-available' &&
-            toolPart.output?.type === 'question'
-          ) {
+    return (
+      <div className="space-y-1.5">
+        {message.parts.map((part, i) => {
+          if (part.type === 'text' && part.text) {
             return (
-              <QuestionFromTool
+              <div
                 key={i}
-                output={toolPart.output}
-                onAnswer={onAnswer}
-              />
+                className="text-sm [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0.5 [&_pre]:my-1 [&_pre]:rounded [&_pre]:bg-muted [&_pre]:p-2 [&_pre]:text-xs [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-xs [&_h1]:my-1 [&_h1]:text-base [&_h1]:font-semibold [&_h2]:my-1 [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:my-1 [&_h3]:text-sm [&_h3]:font-medium [&_strong]:font-semibold [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-muted-foreground/30 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground"
+              >
+                <MemoizedMarkdown text={part.text} />
+              </div>
             );
           }
 
-          return <ToolInvocationPart key={i} part={toolPart} />;
-        }
+          if (isToolPart(part)) {
+            const toolPart = part as any;
+            const toolName = getToolName(toolPart);
 
-        // Skip step-start and other non-renderable parts
-        return null;
-      })}
+            // Count edits
+            if (
+              toolName === 'editDocument' &&
+              toolPart.state === 'output-available'
+            ) {
+              editCount++;
+            }
 
-      {editCount > 0 && (
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Pencil className="size-3" />
-          <span>
-            {editCount} edit{editCount > 1 ? 's' : ''} applied
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
+            // Show question form for askQuestion tool
+            if (
+              toolName === 'askQuestion' &&
+              toolPart.state === 'output-available' &&
+              toolPart.output?.type === 'question'
+            ) {
+              return (
+                <QuestionFromTool
+                  key={i}
+                  output={toolPart.output}
+                  onAnswer={onAnswer}
+                />
+              );
+            }
+
+            return <ToolInvocationPart key={i} part={toolPart} />;
+          }
+
+          // Skip step-start and other non-renderable parts
+          return null;
+        })}
+
+        {editCount > 0 && (
+          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Pencil className="size-3" />
+            <span>
+              {editCount} edit{editCount > 1 ? 's' : ''} applied
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  },
+  (prevProps, nextProps) => {
+    // Custom comparison for memoization
+    if (prevProps.message.id !== nextProps.message.id) return false;
+
+    // Check if parts array length changed
+    if (prevProps.message.parts.length !== nextProps.message.parts.length) return false;
+
+    // Deep check parts equality
+    for (let i = 0; i < prevProps.message.parts.length; i++) {
+      const prevPart = prevProps.message.parts[i] as any;
+      const nextPart = nextProps.message.parts[i] as any;
+
+      if (prevPart.type !== nextPart.type) return false;
+
+      if (prevPart.type === 'text') {
+        if (prevPart.text !== nextPart.text) return false;
+      } else if (isToolPart(prevPart)) {
+        if (prevPart.state !== nextPart.state) return false;
+        // if it's a tool output, the tool output might change
+        if (JSON.stringify(prevPart.output) !== JSON.stringify(nextPart.output)) return false;
+      }
+    }
+
+    return true;
+  }
+);
 
 export function AIChatSidebar({ onClose }: { onClose: () => void }) {
   const {

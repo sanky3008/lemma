@@ -19,6 +19,8 @@ export default defineSchema({
         isContext: v.optional(v.boolean()), // Agent Context Flag
         isArchived: v.optional(v.boolean()),
         isPublished: v.optional(v.boolean()),
+        fileId: v.optional(v.string()),
+        mimeType: v.optional(v.string()),
     })
         .index("by_user", ["userId"])
         .index("by_user_folder", ["userId", "folderId"]),
@@ -73,9 +75,9 @@ export default defineSchema({
         .index("by_user", ["userId"])
         .index("by_plate_id", ["id"]),
 
-    // WingIt Runs: Stores WingIt sessions
     wingItRuns: defineTable({
         userId: v.string(), // Creator
+        documentId: v.optional(v.string()), // Associated Document
         topic: v.string(), // "What is this document about?"
         status: v.string(), // 'questioning' | 'researching' | 'preparing' | 'done' | 'error'
         qas: v.optional(v.array(v.object({

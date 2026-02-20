@@ -68,11 +68,24 @@ export function DocStoreProvider({ children }: { children: ReactNode }) {
     );
 
     useEffect(() => {
-        if (typeof window !== 'undefined') {
+        if (typeof window !== 'undefined' && docsListRaw !== undefined) {
+            // Only run initialization once when docs list loads
+            if (activeDocId !== null) return;
+
             const saved = localStorage.getItem('thinos-active-doc-id');
-            if (saved) setActiveDocId(saved);
+            // If we have a saved ID and it exists in the user's docs, use it
+            if (saved && docsListRaw.some(d => d._id === saved)) {
+                setActiveDocId(saved);
+                return;
+            }
+
+            // Otherwise, default to the context doc
+            const contextDoc = docsListRaw.find(d => d.isContext);
+            if (contextDoc) {
+                setActiveDocId(contextDoc._id);
+            }
         }
-    }, []);
+    }, [docsListRaw]);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {

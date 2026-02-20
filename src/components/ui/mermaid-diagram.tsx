@@ -17,6 +17,7 @@ mermaid.initialize({
         tertiaryColor: '#f8fafc',
     },
     securityLevel: 'loose',
+    suppressErrorRendering: true,
 });
 
 interface MermaidDiagramProps {

@@ -132,6 +132,7 @@ export async function POST(req: Request) {
         directoryTree,
         allDocs = [],
         convexToken,
+        isContextDoc,
     } = body;
 
     // ── Mode: generateQuestions ─────────────────────────────────────────────────
@@ -143,14 +144,22 @@ export async function POST(req: Request) {
                     .join('\n\n')}`
                 : '';
 
+        const baseRole = isContextDoc
+            ? `You are an expert system architect and workspace manager participating in Step 1 of a 3-step 'Wing It' pipeline.`
+            : `You are an expert document strategist participating in Step 1 of a 3-step 'Wing It' pipeline.`;
+
+        const objective = isContextDoc
+            ? `Your objective is to get to know the user so you can write a personalized GLOBAL CONTEXT document for their workspace. This document will serve as the absolute source of truth for all future AI interactions.\n\nYou MUST ask questions to uncover:\n1. Their background (e.g., are they a PM, Engineer, Founder?) and organization size.\n2. What they specifically do or what their product/company does.\n3. Their formatting/AI preferences (e.g., crisp replies vs. detailed, specific rules, tone).`
+            : `You are currently in Step 1 (Questioning). Gather context about a document by asking targeted clarifying questions in batches of 2-3.`;
+
         const systemPrompt = [
-            `You are an expert document strategist participating in Step 1 of a 3-step 'Wing It' pipeline.`,
+            baseRole,
             `The 'Wing It' pipeline collaboratively creates a document from minimal user input:`,
             ` - Step 1 (Questioning): Gather context by asking clarifying questions.`,
             ` - Step 2 (Research): Deeply research the topic based on the gathered context.`,
             ` - Step 3 (Writing): Write the final document based on the research.`,
             ``,
-            `You are currently in Step 1 (Questioning). Gather context about a document by asking targeted clarifying questions in batches of 2-3.`,
+            objective,
             `You have tools available — use webSearch or extractContent ONLY for basic information retrieval required to decide what questions to ask. DO NOT perform deep or exhaustive research, as that is the specific job of Step 2.`,
             ``,
             `When ready, ALWAYS call the \`submitQuestions\` tool (never output text directly):`,
@@ -231,6 +240,7 @@ export async function POST(req: Request) {
             ``,
             `Output your findings as clean markdown prose. Do NOT write the final formatted document.`,
             `Focus on depth of research and organizing raw material for a writer agent to use.`,
+            isContextDoc ? `CRITICAL: You are researching to build the ultimate GLOBAL CONTEXT document. Synthesize definitive rules, architecture, and principles.` : '',
             contextDocMd ? `\n## Global Context\n${contextDocMd}` : '',
             directoryTree ? `\n## Workspace Structure\n${directoryTree}` : '',
             ``,
@@ -306,6 +316,7 @@ export async function POST(req: Request) {
             `Use appropriate structure: headers, sub-sections, lists, tables where data fits.`,
             ``,
             `CRITICAL RULES:`,
+            isContextDoc ? `- YOU ARE WRITING THE GLOBAL CONTEXT DOCUMENT. This document will be injected into every future prompt. It must be highly structured, strictly formatting the established rules, constraints, tech stack, and goals. Make it authoritative.` : '',
             `- Do not output ANY text before the document starts. Begin immediately with the first heading or paragraph.`,
             `- No preamble, no meta-commentary, no "Here is the document:" phrases.`,
             `- Use at most ONE level of list nesting. Never put a list inside another list.`,

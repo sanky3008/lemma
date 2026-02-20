@@ -13,7 +13,10 @@ export const getRun = query({
 });
 
 export const createRun = mutation({
-    args: { topic: v.string() },
+    args: {
+        topic: v.string(),
+        documentId: v.optional(v.string()),
+    },
     handler: async (ctx, args) => {
         const identity = await ctx.auth.getUserIdentity();
         if (!identity) {
@@ -23,6 +26,7 @@ export const createRun = mutation({
         const now = Date.now();
         const runId = await ctx.db.insert("wingItRuns", {
             userId: identity.subject,
+            documentId: args.documentId,
             topic: args.topic,
             status: 'questioning',
             createdAt: now,

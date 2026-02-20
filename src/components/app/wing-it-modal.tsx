@@ -62,9 +62,10 @@ interface WingItModalProps {
     onClose: () => void;
     /** Called when research phase completes — parent streams document into editor */
     onGenerate: (topic: string, qas: QA[], scratchpad: string, runId: Id<'wingItRuns'> | null) => void;
+    activeDoc?: any;
 }
 
-export function WingItModal({ open, onClose, onGenerate }: WingItModalProps) {
+export function WingItModal({ open, onClose, onGenerate, activeDoc }: WingItModalProps) {
     const { getGlobalContextDoc, getAllDocs, folders } = useDocStore();
     const { getToken } = useAuth();
 
@@ -80,7 +81,11 @@ export function WingItModal({ open, onClose, onGenerate }: WingItModalProps) {
     const updateQAs = useMutation(api.wingIt.updateQAs);
     const updateResearch = useMutation(api.wingIt.updateResearch);
 
-    const [phase, setPhase] = useState<Phase>('topic');
+    // If this is the context document, we show an intro screen instead of asking for a topic
+    const isContextFlow = activeDoc?.isContext === true;
+
+    // phase includes the new 'intro' screen
+    const [phase, setPhase] = useState<Phase | 'intro'>(isContextFlow ? 'intro' : 'topic');
     const [loaderLabel, setLoaderLabel] = useState('Generating questions…');
 
     // Run ID
@@ -114,7 +119,7 @@ export function WingItModal({ open, onClose, onGenerate }: WingItModalProps) {
     // Reset when modal opens/closes
     useEffect(() => {
         if (open) {
-            setPhase('topic');
+            setPhase(activeDoc?.isContext ? 'intro' : 'topic');
             setLoaderLabel('Generating questions…');
             setRunId(null);
             setTopicInput('');
@@ -200,6 +205,7 @@ export function WingItModal({ open, onClose, onGenerate }: WingItModalProps) {
                         mode: 'research',
                         topic,
                         allQAs: qas,
+                        isContextDoc: activeDoc?.isContext === true,
                         ...context,
                     }),
                     signal: abortRef.current.signal,
@@ -295,6 +301,7 @@ export function WingItModal({ open, onClose, onGenerate }: WingItModalProps) {
                         mode: 'generateQuestions',
                         topic,
                         existingQAs,
+                        isContextDoc: activeDoc?.isContext === true,
                         ...context,
                     }),
                     signal: abortRef.current.signal,
@@ -336,15 +343,18 @@ export function WingItModal({ open, onClose, onGenerate }: WingItModalProps) {
 
     // ── Handlers ────────────────────────────────────────────────────────────────
 
-    const handleTopicSubmit = useCallback(async () => {
-        const trimmed = topicInput.trim();
+    const handleTopicSubmit = useCallback(async (overrideTopic?: string) => {
+        const trimmed = overrideTopic ? overrideTopic.trim() : topicInput.trim();
         if (!trimmed) return;
         topicRef.current = trimmed;
 
         // 1) Initialize DB run
         let newRunId: Id<'wingItRuns'> | null = null;
         try {
-            newRunId = await createRun({ topic: trimmed });
+            newRunId = await createRun({
+                topic: trimmed,
+                documentId: activeDoc?.id
+            });
             setRunId(newRunId);
         } catch (error) {
             console.error('Error creating WingIt run', error);
@@ -359,7 +369,7 @@ export function WingItModal({ open, onClose, onGenerate }: WingItModalProps) {
         }
 
         fetchQuestions(trimmed, [topicQA], newRunId);
-    }, [topicInput, fetchQuestions, createRun, updateQAs]);
+    }, [topicInput, fetchQuestions, createRun, updateQAs, activeDoc?.id]);
 
     const handleAnswerSubmit = useCallback(() => {
         if (!currentQuestion) return;
@@ -407,7 +417,12 @@ export function WingItModal({ open, onClose, onGenerate }: WingItModalProps) {
         onClose();
     }, [onClose]);
 
-    const canClose = phase === 'topic' || phase === 'answering';
+    const handleContextStart = useCallback(() => {
+        setPhase('loading_questions');
+        handleTopicSubmit("The global context, absolute rules, core constraints, and underlying background knowledge for this workspace.");
+    }, [handleTopicSubmit]);
+
+    const canClose = phase === 'intro' || phase === 'topic' || phase === 'answering';
 
     const sel = selectedOption;
     const hasSelection = sel && !(Array.isArray(sel) && sel.length === 0);
@@ -460,6 +475,71 @@ export function WingItModal({ open, onClose, onGenerate }: WingItModalProps) {
                         </div>
                     )}
 
+                    {/* ── Context Doc Intro ── */}
+                    {phase === 'intro' && (
+                        <div className="flex-1 flex flex-col relative overflow-hidden -mx-6 -mt-5 -mb-5 h-[500px]">
+                            {/* Background subtle grid */}
+                            <div className="absolute inset-0 z-0 pointer-events-none opacity-[0.02]">
+                                <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+                                    <defs>
+                                        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                                            <path d="M 40 0 L 0 0 0 40" fill="none" stroke="currentColor" strokeWidth="0.5" />
+                                        </pattern>
+                                    </defs>
+                                    <rect width="100%" height="100%" fill="url(#grid)" />
+                                </svg>
+                            </div>
+
+                            {/* Scrolling Content Area */}
+                            <div className="flex-1 flex flex-col items-center justify-center relative p-8">
+                                {/* Geometric Illustration */}
+                                <div className="relative z-10 w-full max-w-sm mb-6 pointer-events-none text-foreground">
+                                    <svg viewBox="0 0 400 200" className="w-full h-auto text-current">
+                                        <g transform="translate(200, 100)">
+                                            {/* Connections */}
+                                            <line x1="0" y1="0" x2="-80" y2="-40" stroke="currentColor" strokeWidth="1" strokeDasharray="3 3" className="opacity-30" />
+                                            <line x1="0" y1="0" x2="80" y2="-30" stroke="currentColor" strokeWidth="1" strokeDasharray="3 3" className="opacity-30" />
+                                            <line x1="0" y1="0" x2="-50" y2="60" stroke="currentColor" strokeWidth="1" strokeDasharray="3 3" className="opacity-30" />
+                                            <line x1="0" y1="0" x2="60" y2="50" stroke="currentColor" strokeWidth="1" strokeDasharray="3 3" className="opacity-30" />
+
+                                            {/* Nodes */}
+                                            <circle cx="-80" cy="-40" r="4" fill="currentColor" className="opacity-40" />
+                                            <circle cx="80" cy="-30" r="6" fill="currentColor" className="opacity-40" />
+                                            <circle cx="-50" cy="60" r="5" fill="currentColor" className="opacity-40" />
+                                            <circle cx="60" cy="50" r="4" fill="currentColor" className="opacity-40" />
+
+                                            {/* Central Core */}
+                                            <circle cx="0" cy="0" r="40" fill="none" stroke="currentColor" strokeWidth="1" className="opacity-20 animate-[spin_30s_linear_infinite]" strokeDasharray="4 4" />
+                                            <circle cx="0" cy="0" r="24" fill="white" stroke="currentColor" strokeWidth="2" />
+                                            <polygon points="0,-8 8,4 -8,4" fill="currentColor" />
+                                        </g>
+                                    </svg>
+                                </div>
+
+                                {/* Text Content */}
+                                <div className="relative z-10 text-center space-y-3">
+                                    <h3 className="text-xl font-semibold tracking-tight text-foreground">
+                                        Establish Global Context
+                                    </h3>
+                                    <p className="text-sm text-muted-foreground leading-relaxed max-w-sm mx-auto">
+                                        Wing It will ask you a series of questions to help define the core rules, constraints, and background knowledge for this workspace.
+                                    </p>
+                                </div>
+                            </div>
+
+                            {/* Fixed Button Footer */}
+                            <div className="relative z-10 w-full p-6 border-t bg-background shrink-0">
+                                <Button
+                                    onClick={handleContextStart}
+                                    className="w-full gap-2"
+                                >
+                                    <span>Get Started</span>
+                                    <ArrowRight className="w-4 h-4" />
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+
                     {/* ── Topic input ── */}
                     {phase === 'topic' && (
                         <div className="flex flex-col gap-3 flex-1">
@@ -480,7 +560,7 @@ export function WingItModal({ open, onClose, onGenerate }: WingItModalProps) {
                                 className="flex-1 resize-none rounded-lg border bg-muted/30 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-ring placeholder:text-muted-foreground/50"
                             />
                             <Button
-                                onClick={handleTopicSubmit}
+                                onClick={() => handleTopicSubmit()}
                                 disabled={!topicInput.trim()}
                                 className="w-full gap-2 shrink-0"
                             >

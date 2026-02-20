@@ -31,6 +31,7 @@ import { useChatStore } from '@/lib/ai/chat-store';
 import { FileText } from 'lucide-react';
 import { CommentsSync } from '../editor/comments-sync';
 import { WingItModal } from './wing-it-modal';
+import { WingItEmptyState } from './wing-it-empty-state';
 import { flattenNestedLists, parseSSEStream } from '@/lib/ai/utils';
 import { buildDirectoryTree, createMarkdownEditor, serializeDocToMarkdown } from '@/lib/ai/serialize';
 import { useAuth } from '@clerk/nextjs';
@@ -76,6 +77,7 @@ function PlateEditor({
     aiSidebarOpen,
     onWingIt,
     onEditorReady,
+    activeDoc,
 }: {
     docId: string;
     initialContent: any[];
@@ -88,6 +90,7 @@ function PlateEditor({
     onWingIt?: () => void;
     /** Called once the editor instance is ready so parent can stream into it */
     onEditorReady?: (editor: ReturnType<typeof usePlateEditor>) => void;
+    activeDoc?: any;
 }) {
     const { editorRef, setSelectedText } = useChatStore();
     const [isBlank, setIsBlank] = useState(() => {
@@ -188,10 +191,10 @@ function PlateEditor({
                     )}
                 </div>
 
-                <div className="flex-1 overflow-y-auto relative">
-                    <EditorContainer>
+                <div className="flex-1 overflow-y-auto relative flex flex-col">
+                    <EditorContainer className="flex-1 min-h-0 [&_.slate-editor]:min-h-full">
                         <Editor
-                            placeholder={isBlank && onWingIt ? '' : 'Start writing...'}
+                            placeholder="Start writing..."
                         />
                         <FloatingToolbar>
                             <FloatingToolbarButtons />
@@ -199,20 +202,10 @@ function PlateEditor({
                     </EditorContainer>
                     {isBlank && onWingIt && (
                         <div
-                            className="absolute inset-x-0 flex items-start px-16 sm:px-[max(64px,calc(50%-350px))]"
-                            style={{ top: '16px', pointerEvents: 'none' }}
+                            className="absolute inset-x-0 flex flex-col items-center justify-center pointer-events-none"
+                            style={{ top: '0', pointerEvents: 'none' }}
                         >
-                            <span className="text-sm text-muted-foreground/80" style={{ pointerEvents: 'none' }}>
-                                Feeling lazy? why don&apos;t you{' '}
-                                <button
-                                    type="button"
-                                    onClick={onWingIt}
-                                    className="text-primary underline underline-offset-2 hover:text-primary/80 transition-colors"
-                                    style={{ pointerEvents: 'auto' }}
-                                >
-                                    wing it
-                                </button>
-                            </span>
+                            <WingItEmptyState onWingIt={onWingIt} isContextDoc={activeDoc?.isContext} />
                         </div>
                     )}
                 </div>
@@ -490,11 +483,13 @@ export function DocumentEditor({
                 aiSidebarOpen={aiSidebarOpen}
                 onWingIt={() => setWingItOpen(true)}
                 onEditorReady={handleEditorReady}
+                activeDoc={activeDoc}
             />
             <WingItModal
                 open={wingItOpen}
                 onClose={() => setWingItOpen(false)}
                 onGenerate={handleGenerate}
+                activeDoc={activeDoc}
             />
         </>
     );

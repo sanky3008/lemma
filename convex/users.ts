@@ -58,11 +58,7 @@ export const store = mutation({
             content: [
                 {
                     type: "p",
-                    children: [
-                        {
-                            text: "Add your background context here — problem areas, constraints, links, reusable snippets.",
-                        },
-                    ],
+                    children: [{ text: "" }],
                 },
             ],
             isContext: true,
