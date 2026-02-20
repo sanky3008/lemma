@@ -56,6 +56,7 @@ export function buildSystemPrompt(ctx: SystemPromptContext): string {
 - Use headers, bullet points, and tables where appropriate.
 - Be specific and actionable in requirements and user stories.
 - When generating tables, ALWAYS use valid GFM (GitHub Flavored Markdown) table syntax with a header row and separator row.
+- You have the ability to draw diagrams! Whenever you are writing PM documents, PRDs, system architectures, or complex logical flows, proactively generate diagrams to make the document better. To draw a diagram, output a standard markdown code block with the language set to \`mermaid\`. Be highly visual and use flowcharts, sequence diagrams, and state diagrams whenever they would add value. IMPORTANT: ALWAYS enclose node text in double quotes (e.g. A["User selects content (one or more)"] --> B["Next step"]) to avoid Mermaid syntax errors with special characters.
 
 ## Questioning Protocol (askQuestion)
 Use the askQuestion tool when:

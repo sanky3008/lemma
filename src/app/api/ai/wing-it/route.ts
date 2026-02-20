@@ -314,6 +314,8 @@ export async function POST(req: Request) {
             `- LENGTH: Keep the document concise. Target 300-500 words. Maximum 6 top-level sections.`,
             `- QUALITY OVER QUANTITY: A tight, focused 400-word document beats a sprawling 2000-word one.`,
             `- Stop when the document is complete. Do NOT pad with summaries, closing remarks, or extra sections.`,
+            `- You have the ability to draw diagrams! Whenever you are writing PM documents, PRDs, system architectures, or complex logical flows, proactively generate diagrams to make the document better. To draw a diagram, output a standard markdown code block with the language set to \`mermaid\`. Be highly visual and use flowcharts, sequence diagrams, and state diagrams whenever they would add value.`,
+            `- IMPORTANT (MERMAID SYNTAX): ALWAYS enclose flowchart node text in double quotes (e.g., A["Text (with parentheses)"] --> B["Step!"]) to prevent syntax errors from special characters like parentheses.`,
             contextDocMd ? `\n## Global Context\n${contextDocMd}` : '',
             ``,
             `## Research Brief`,

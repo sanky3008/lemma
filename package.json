@@ -57,6 +57,7 @@
     "lodash": "^4.17.23",
     "lowlight": "^3.3.0",
     "lucide-react": "^0.563.0",
+    "mermaid": "^11.12.3",
     "next": "16.1.6",
     "pdf-lib": "^1.17.1",
     "radix-ui": "^1.4.3",
