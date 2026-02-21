@@ -12,6 +12,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Loader2, ArrowRight, Wand2, Check, Globe, FileText, Link } from 'lucide-react';
 import { useMutation } from 'convex/react';
+import { DinoGame } from './dino-game';
 import { useDocStore } from '@/lib/doc-store';
 import { buildDirectoryTree, serializeDocToMarkdown } from '@/lib/ai/serialize';
 import { useAuth } from '@clerk/nextjs';
@@ -341,6 +342,8 @@ export function WingItModal({ open, onClose, onGenerate, activeDoc }: WingItModa
                                 setSelectedOption('');
                                 setCustomAnswer('');
                                 setPhase('answering');
+                                // Stop consuming the stream — let user answer before proceeding
+                                break;
                             }
                         }
                     } else if (event.type === 'done' && !gotQuestions) {
@@ -677,13 +680,19 @@ export function WingItModal({ open, onClose, onGenerate, activeDoc }: WingItModa
                         </div>
                     )}
 
-                    {/* ── Researching — Live Activity Feed ── */}
+                    {/* ── Researching — Activity Feed + Dino Game ── */}
                     {phase === 'researching' && (
-                        <div className="flex flex-col flex-1 overflow-hidden">
-                            <p className="text-sm font-medium text-foreground mb-4 shrink-0">
-                                Researching…
-                            </p>
-                            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+                        <div className="flex flex-col flex-1 overflow-hidden gap-3">
+                            {/* Activity feed — top section, scrolls to show latest */}
+                            <div className="shrink-0">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <p className="text-sm font-medium text-foreground">
+                                        Researching…
+                                    </p>
+                                    <Loader2 className="size-3 animate-spin text-muted-foreground" />
+                                </div>
+                            </div>
+                            <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
                                 {activityItems.length === 0 && !isThinking && (
                                     <div className="flex items-center gap-2 text-muted-foreground">
                                         <Loader2 className="size-3.5 animate-spin shrink-0" />
@@ -725,7 +734,6 @@ export function WingItModal({ open, onClose, onGenerate, activeDoc }: WingItModa
                                         </div>
                                     );
                                 })}
-                                {/* Thinking / writing-notes indicator */}
                                 {isWritingNotes && (
                                     <div className="flex items-center gap-2 text-muted-foreground pl-0.5 mt-1">
                                         <div className="size-4 rounded-full bg-muted flex items-center justify-center shrink-0">
@@ -735,14 +743,24 @@ export function WingItModal({ open, onClose, onGenerate, activeDoc }: WingItModa
                                     </div>
                                 )}
                             </div>
+
+                            {/* Dino game — always visible at the bottom */}
+                            <div className="shrink-0 border-t border-border/40 pt-3">
+                                <DinoGame active={phase === 'researching'} />
+                            </div>
                         </div>
                     )}
 
-                    {/* ── Preparing (handing off to writer) ── */}
+                    {/* ── Preparing (handing off to writer) + Game ── */}
                     {phase === 'preparing' && (
-                        <div className="flex flex-col items-center justify-center gap-3 flex-1">
-                            <Loader2 className="size-7 animate-spin text-primary" />
-                            <p className="text-sm text-muted-foreground">Writing your document…</p>
+                        <div className="flex flex-col flex-1 overflow-hidden gap-3">
+                            <div className="flex items-center justify-center gap-2 py-4 shrink-0">
+                                <Loader2 className="size-5 animate-spin text-primary" />
+                                <p className="text-sm text-muted-foreground">Writing your document…</p>
+                            </div>
+                            <div className="shrink-0 border-t border-border/40 pt-3">
+                                <DinoGame active={phase === 'preparing'} />
+                            </div>
                         </div>
                     )}
                 </div>
