@@ -306,21 +306,44 @@ export function AIChatSidebar({ onClose }: { onClose: () => void }) {
   const {
     threadMetas,
     activeThreadId,
-    selectedText,
-    setSelectedText,
+    contextItems,
+    addContextDocument,
+    removeContextItem,
     createThread,
     switchThread,
     deleteThread,
     sendMessage,
   } = useChatStore();
   const { messages, status, error } = useChatStream();
-  const { getActiveDoc } = useDocStore();
+  const { getActiveDoc, docs } = useDocStore();
   const activeDoc = getActiveDoc();
 
   const [input, setInput] = useState('');
   const [showThreadPicker, setShowThreadPicker] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // @ mention state
+  const [mention, setMention] = useState<{
+    active: boolean;
+    query: string;
+    startIndex: number;
+  } | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+
+  // Docs available for @ mention (exclude global context doc)
+  const mentionableDocs = useMemo(
+    () => docs.filter((d) => !d.isContext),
+    [docs]
+  );
+
+  const filteredMentionDocs = useMemo(() => {
+    if (!mention) return [];
+    const q = mention.query.toLowerCase();
+    return mentionableDocs.filter((d) =>
+      d.title.toLowerCase().includes(q)
+    );
+  }, [mention, mentionableDocs]);
 
   const isStreaming = status === 'streaming' || status === 'submitted';
   const activeThreadMeta = threadMetas.find((t) => t.id === activeThreadId);
@@ -344,14 +367,82 @@ export function AIChatSidebar({ onClose }: { onClose: () => void }) {
     sendMessage(text);
   }, [input, isStreaming, sendMessage]);
 
+  const selectMentionDoc = useCallback(
+    (doc: { id: string; title: string }) => {
+      if (!mention) return;
+      // Remove @query from input
+      const before = input.slice(0, mention.startIndex);
+      const after = input.slice(mention.startIndex + mention.query.length + 1); // +1 for @
+      setInput(before + after);
+      addContextDocument(doc.id, doc.title);
+      setMention(null);
+      setMentionIndex(0);
+      inputRef.current?.focus();
+    },
+    [mention, input, addContextDocument]
+  );
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      if (mention?.active && filteredMentionDocs.length > 0) {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setMentionIndex((prev) =>
+            prev < filteredMentionDocs.length - 1 ? prev + 1 : 0
+          );
+          return;
+        }
+        if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setMentionIndex((prev) =>
+            prev > 0 ? prev - 1 : filteredMentionDocs.length - 1
+          );
+          return;
+        }
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          selectMentionDoc(filteredMentionDocs[mentionIndex]);
+          return;
+        }
+      }
+      if (e.key === 'Escape' && mention) {
+        e.preventDefault();
+        setMention(null);
+        setMentionIndex(0);
+        return;
+      }
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
         handleSend();
       }
     },
-    [handleSend]
+    [handleSend, mention, filteredMentionDocs, mentionIndex, selectMentionDoc]
+  );
+
+  const handleInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const value = e.target.value;
+      setInput(value);
+
+      // Detect @ mention
+      const cursorPos = e.target.selectionStart;
+      const textBeforeCursor = value.slice(0, cursorPos);
+      // Find last @ that is preceded by whitespace or is at start of input
+      const lastAtIndex = textBeforeCursor.lastIndexOf('@');
+
+      if (lastAtIndex >= 0 && (lastAtIndex === 0 || /\s/.test(textBeforeCursor[lastAtIndex - 1]))) {
+        const query = textBeforeCursor.slice(lastAtIndex + 1);
+        // Don't activate if there's a space in the query (user has moved on)
+        if (!query.includes(' ')) {
+          setMention({ active: true, query, startIndex: lastAtIndex });
+          setMentionIndex(0);
+          return;
+        }
+      }
+      setMention(null);
+      setMentionIndex(0);
+    },
+    []
   );
 
   const handleAnswer = useCallback(
@@ -477,60 +568,103 @@ export function AIChatSidebar({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* Context chips */}
-      {(activeDoc || selectedText) && (
+      {(activeDoc || contextItems.length > 0) && (
         <div className="flex flex-wrap gap-1 border-t px-3 py-1.5">
           {activeDoc && (
             <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
               {activeDoc.title}
             </span>
           )}
-          {selectedText && (
-            <span className="flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
-              Selection
+          {contextItems.map((item) => (
+            <span
+              key={item.id}
+              className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary"
+              title={
+                item.kind === 'snippet'
+                  ? `${item.docTitle}: ${item.text}`
+                  : item.docTitle
+              }
+            >
+              {item.kind === 'snippet' ? (
+                <Bot className="size-2.5" />
+              ) : (
+                <FileText className="size-2.5" />
+              )}
+              <span className="max-w-[120px] truncate">
+                {item.kind === 'snippet'
+                  ? item.text.slice(0, 30) + (item.text.length > 30 ? '...' : '')
+                  : item.docTitle}
+              </span>
               <button
-                onClick={() => setSelectedText('')}
-                className="hover:text-foreground"
+                onClick={() => removeContextItem(item.id)}
+                className="hover:text-primary/70"
               >
                 <X className="size-2.5" />
               </button>
             </span>
-          )}
+          ))}
         </div>
       )}
 
       {/* Input area */}
       <div className="border-t p-3">
-        <div className="flex items-end gap-2">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Ask Lemma AI..."
-            rows={1}
-            className="max-h-32 min-h-[36px] flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
-            style={{
-              height: 'auto',
-              overflow: 'hidden',
-            }}
-            onInput={(e) => {
-              const target = e.target as HTMLTextAreaElement;
-              target.style.height = 'auto';
-              target.style.height = Math.min(target.scrollHeight, 128) + 'px';
-            }}
-          />
-          <Button
-            size="sm"
-            className="h-9 w-9 shrink-0 p-0"
-            onClick={handleSend}
-            disabled={!input.trim() || isStreaming}
-          >
-            {isStreaming ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Send className="size-4" />
-            )}
-          </Button>
+        <div className="relative">
+          {/* @ mention popup */}
+          {mention?.active && filteredMentionDocs.length > 0 && (
+            <div className="absolute bottom-full left-0 right-0 mb-1 max-h-40 overflow-y-auto rounded-md border bg-popover p-1 shadow-md z-50">
+              {filteredMentionDocs.map((doc, i) => (
+                <button
+                  key={doc.id}
+                  className={cn(
+                    'flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-xs',
+                    i === mentionIndex
+                      ? 'bg-accent text-accent-foreground'
+                      : 'hover:bg-accent'
+                  )}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    selectMentionDoc(doc);
+                  }}
+                >
+                  <FileText className="size-3 shrink-0" />
+                  <span className="truncate">{doc.title}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              placeholder="Ask Lemma AI... (type @ to mention a doc)"
+              rows={1}
+              className="max-h-32 min-h-[36px] flex-1 resize-none rounded-md border bg-background px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-ring"
+              style={{
+                height: 'auto',
+                overflow: 'hidden',
+              }}
+              onInput={(e) => {
+                const target = e.target as HTMLTextAreaElement;
+                target.style.height = 'auto';
+                target.style.height = Math.min(target.scrollHeight, 128) + 'px';
+              }}
+            />
+            <Button
+              size="sm"
+              className="h-9 w-9 shrink-0 p-0"
+              onClick={handleSend}
+              disabled={!input.trim() || isStreaming}
+            >
+              {isStreaming ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Send className="size-4" />
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </div>

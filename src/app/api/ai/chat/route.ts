@@ -14,6 +14,36 @@ export async function POST(req: Request) {
   // Convert UIMessages to ModelMessages
   const modelMessages = await convertToModelMessages(messages);
 
+  const allDocs: { id: string; title: string; folderId?: string }[] =
+    context?.allDocs ?? [];
+
+  // Resolve document context items — fetch content from Convex for 'document' items
+  let resolvedContextItems = context?.contextItems;
+  if (resolvedContextItems && resolvedContextItems.length > 0) {
+    const convexToken = context?.convexToken;
+    resolvedContextItems = await Promise.all(
+      resolvedContextItems.map(async (item: any) => {
+        if (item.kind !== 'document') return item;
+        if (!convexToken) return { ...item, resolvedMarkdown: '(authentication token not available)' };
+        try {
+          const { ConvexHttpClient } = await import('convex/browser');
+          const { api: convexApi } = await import('../../../../../convex/_generated/api');
+          const client = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+          client.setAuth(convexToken);
+          const result = await client.query(convexApi.documents.getDocContent, {
+            id: item.docId as any,
+          });
+          if (!result?.content) return { ...item, resolvedMarkdown: '(empty document)' };
+          const mdEditor = createMarkdownEditor();
+          const md = serializeToAnnotatedMarkdown(mdEditor, result.content);
+          return { ...item, resolvedMarkdown: md };
+        } catch (error: any) {
+          return { ...item, resolvedMarkdown: `(failed to load: ${error.message})` };
+        }
+      })
+    );
+  }
+
   const systemPrompt = buildSystemPrompt({
     contextDocMd: context?.contextDocMd ?? null,
     directoryTree: context?.directoryTree ?? '',
@@ -21,11 +51,8 @@ export async function POST(req: Request) {
     activeDocAnnotatedMd: context?.activeDocAnnotatedMd ?? null,
     activeDocXml: context?.activeDocXml ?? null,
     activeDocTitle: context?.activeDocTitle ?? null,
-    selectedText: context?.selectedText,
+    contextItems: resolvedContextItems,
   });
-
-  const allDocs: { id: string; title: string; folderId?: string }[] =
-    context?.allDocs ?? [];
 
   const result = streamText({
     model: openai('gpt-5.1'),
