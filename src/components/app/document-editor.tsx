@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Plate, usePlateEditor } from 'platejs/react';
-import { NodeIdPlugin, RangeApi } from 'platejs';
+import { NodeIdPlugin } from 'platejs';
 import { deserializeMd } from '@platejs/markdown';
 
 import { BasicBlocksKit } from '@/components/editor/plugins/basic-blocks-kit';
@@ -92,7 +92,8 @@ function PlateEditor({
     onEditorReady?: (editor: ReturnType<typeof usePlateEditor>) => void;
     activeDoc?: any;
 }) {
-    const { editorRef, setSelectedText } = useChatStore();
+    const { editorRef, addContextSnippet } = useChatStore();
+    const docStore = useDocStore();
     const [isBlank, setIsBlank] = useState(() => {
         const c = initialContent;
         return c.length === 0 || (c.length === 1 && (c[0] as any)?.children?.[0]?.text === '');
@@ -122,39 +123,23 @@ function PlateEditor({
         onEditorReady?.(editor);
     }, [editor, onEditorReady]);
 
-    // Track text selection for AI context
-    const selectionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
+    // Cmd+J / Ctrl+J — add selection to context
     useEffect(() => {
-        const handleSelectionChange = () => {
-            if (selectionTimeoutRef.current) {
-                clearTimeout(selectionTimeoutRef.current);
-            }
-
-            // Debounce selection updates to avoid performance issues
-            selectionTimeoutRef.current = setTimeout(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
+                e.preventDefault();
                 const selection = editor.selection;
-                if (!selection || RangeApi.isCollapsed(selection)) {
-                    setSelectedText('');
-                    return;
-                }
-                try {
-                    const text = editor.api.string(selection);
-                    setSelectedText(text || '');
-                } catch {
-                    setSelectedText('');
-                }
-            }, 500);
-        };
-
-        document.addEventListener('selectionchange', handleSelectionChange);
-        return () => {
-            document.removeEventListener('selectionchange', handleSelectionChange);
-            if (selectionTimeoutRef.current) {
-                clearTimeout(selectionTimeoutRef.current);
+                if (!selection) return;
+                const text = editor.api.string(selection);
+                if (!text) return;
+                const doc = docStore.getActiveDoc();
+                if (!doc) return;
+                addContextSnippet(doc.id, doc.title, text);
             }
         };
-    }, [editor, setSelectedText]);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [editor, docStore, addContextSnippet]);
 
     return (
         <Plate

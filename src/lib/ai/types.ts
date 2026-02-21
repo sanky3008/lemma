@@ -50,6 +50,10 @@ export type ChatThread = {
   updatedAt: number;
 };
 
+export type ContextItem =
+  | { kind: 'snippet'; id: string; docId: string; docTitle: string; text: string }
+  | { kind: 'document'; id: string; docId: string; docTitle: string };
+
 export type ChatRequest = {
   messages: { role: 'user' | 'assistant'; content: string }[];
   context: {
@@ -61,6 +65,6 @@ export type ChatRequest = {
     contextDocMd: string | null;
     directoryTree: string;
     allDocs: { id: string; title: string; folderId?: string; content: any[] }[];
-    selectedText?: string;
+    contextItems?: ContextItem[];
   };
 };

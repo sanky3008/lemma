@@ -1,3 +1,9 @@
+import type { ContextItem } from './types';
+
+type ResolvedContextItem = ContextItem & {
+  resolvedMarkdown?: string;
+};
+
 type SystemPromptContext = {
   contextDocMd: string | null;
   directoryTree: string;
@@ -5,7 +11,7 @@ type SystemPromptContext = {
   activeDocAnnotatedMd: string | null;
   activeDocXml?: string | null;
   activeDocTitle: string | null;
-  selectedText?: string;
+  contextItems?: ResolvedContextItem[];
 };
 
 export function buildSystemPrompt(ctx: SystemPromptContext): string {
@@ -99,11 +105,18 @@ ${ctx.directoryTree}`);
 
   }
 
-  if (ctx.selectedText) {
-    parts.push(`\n## Selected Text
-The user has selected the following text in the active document:
+  if (ctx.contextItems && ctx.contextItems.length > 0) {
+    const itemSections = ctx.contextItems.map((item) => {
+      if (item.kind === 'snippet') {
+        return `### Snippet from "${item.docTitle}"\n${item.text}`;
+      }
+      const content = (item as ResolvedContextItem).resolvedMarkdown ?? '(content not available)';
+      return `### Document: "${item.docTitle}"\n${content}`;
+    });
+    parts.push(`\n## Pinned Context
+The user has pinned the following items as additional context:
 
-${ctx.selectedText}`);
+${itemSections.join('\n\n')}`);
   }
 
   return parts.join('\n');

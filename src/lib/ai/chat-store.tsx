@@ -24,7 +24,7 @@ import {
   serializeToXML,
 } from './serialize';
 import { applyEditsToEditor } from './edit-engine';
-import type { EditInstruction } from './types';
+import type { ContextItem, EditInstruction } from './types';
 import { useQuery, useMutation } from 'convex/react';
 import { useAuth } from '@clerk/nextjs';
 import { api } from '../../../convex/_generated/api';
@@ -46,8 +46,10 @@ type ThreadMeta = {
 type ChatStoreContextValue = {
   threadMetas: ThreadMeta[];
   activeThreadId: string | null;
-  selectedText: string;
-  setSelectedText: (text: string) => void;
+  contextItems: ContextItem[];
+  addContextSnippet: (docId: string, docTitle: string, text: string) => void;
+  addContextDocument: (docId: string, docTitle: string) => void;
+  removeContextItem: (id: string) => void;
   createThread: () => string;
   switchThread: (id: string) => void;
   deleteThread: (id: string) => void;
@@ -120,7 +122,7 @@ function uiMessagesToConvex(messages: UIMessage[]) {
 export function ChatStoreProvider({ children }: { children: ReactNode }) {
   const [threadMetas, setThreadMetas] = useState<ThreadMeta[]>([]);
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
-  const [selectedText, setSelectedText] = useState('');
+  const [contextItems, setContextItems] = useState<ContextItem[]>([]);
   const editorRef = useRef<SlateEditor | null>(null);
   const commentsRef = useRef<any[] | undefined>(undefined);
   const appliedEditsRef = useRef<Set<string>>(new Set());
@@ -208,9 +210,48 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
         title: d.title,
         folderId: d.folderId,
       })),
-      selectedText: selectedText || undefined,
+      contextItems: contextItems.length > 0 ? contextItems : undefined,
     };
-  }, [docStore, selectedText]);
+  }, [docStore, contextItems]);
+
+  const addContextSnippet = useCallback(
+    (docId: string, docTitle: string, text: string) => {
+      const truncated = text.slice(0, 2000);
+      setContextItems((prev) => {
+        if (prev.length >= 10) return prev;
+        const exists = prev.some(
+          (item) => item.kind === 'snippet' && item.docId === docId && item.text === truncated
+        );
+        if (exists) return prev;
+        return [
+          ...prev,
+          { kind: 'snippet', id: generateId(), docId, docTitle, text: truncated },
+        ];
+      });
+    },
+    []
+  );
+
+  const addContextDocument = useCallback(
+    (docId: string, docTitle: string) => {
+      setContextItems((prev) => {
+        if (prev.length >= 10) return prev;
+        const exists = prev.some(
+          (item) => item.kind === 'document' && item.docId === docId
+        );
+        if (exists) return prev;
+        return [
+          ...prev,
+          { kind: 'document', id: generateId(), docId, docTitle },
+        ];
+      });
+    },
+    []
+  );
+
+  const removeContextItem = useCallback((id: string) => {
+    setContextItems((prev) => prev.filter((item) => item.id !== id));
+  }, []);
 
   const applyEditsFromMessage = useCallback((message: UIMessage) => {
     if (appliedEditsRef.current.has(message.id)) return;
@@ -555,8 +596,10 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     () => ({
       threadMetas,
       activeThreadId,
-      selectedText,
-      setSelectedText,
+      contextItems,
+      addContextSnippet,
+      addContextDocument,
+      removeContextItem,
       createThread,
       switchThread,
       deleteThread,
@@ -567,7 +610,10 @@ export function ChatStoreProvider({ children }: { children: ReactNode }) {
     [
       threadMetas,
       activeThreadId,
-      selectedText,
+      contextItems,
+      addContextSnippet,
+      addContextDocument,
+      removeContextItem,
       createThread,
       switchThread,
       deleteThread,
