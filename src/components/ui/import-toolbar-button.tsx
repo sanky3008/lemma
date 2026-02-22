@@ -19,6 +19,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+import { flattenNestedLists } from '@/lib/ai/utils';
+
 import { ToolbarButton } from './toolbar';
 
 type ImportType = 'html' | 'markdown';
@@ -38,7 +40,8 @@ export function ImportToolbarButton(props: DropdownMenuProps) {
     }
 
     if (type === 'markdown') {
-      return editor.getApi(MarkdownPlugin).markdown.deserialize(text);
+      const nodes = editor.getApi(MarkdownPlugin).markdown.deserialize(text);
+      return flattenNestedLists(nodes);
     }
 
     return [];

@@ -2,34 +2,43 @@
 // Convex's 16-level document nesting limit from being exceeded.
 
 export function flattenNestedLists(nodes: any[]): any[] {
-    return nodes.map((node) => {
+    const result: any[] = [];
+    for (const node of nodes) {
         if (node.type === 'ul' || node.type === 'ol') {
-            return { ...node, children: flattenListItems(node.children ?? []) };
+            result.push(...convertListToIndent(node, 1));
+        } else if (node.children) {
+            result.push({ ...node, children: flattenNestedLists(node.children) });
+        } else {
+            result.push(node);
         }
-        if (node.children) {
-            return { ...node, children: flattenNestedLists(node.children) };
-        }
-        return node;
-    });
+    }
+    return result;
 }
 
-function flattenListItems(liItems: any[]): any[] {
+function convertListToIndent(listNode: any, depth: number): any[] {
+    const styleType = listNode.type === 'ol' ? 'decimal' : 'disc';
     const result: any[] = [];
-    for (const li of liItems) {
-        const lic = (li.children ?? []).filter((c: any) => c.type === 'lic');
+
+    for (const li of listNode.children ?? []) {
+        const contents = (li.children ?? []).filter(
+            (c: any) => c.type !== 'ul' && c.type !== 'ol'
+        );
         const nested = (li.children ?? []).filter(
             (c: any) => c.type === 'ul' || c.type === 'ol'
         );
-        const other = (li.children ?? []).filter(
-            (c: any) => c.type !== 'lic' && c.type !== 'ul' && c.type !== 'ol'
-        );
 
-        // Keep the item itself (without nested lists)
-        result.push({ ...li, children: [...lic, ...other] });
+        for (const content of contents) {
+            // Convert lic (list item content) to a paragraph with indent props
+            result.push({
+                type: 'p',
+                indent: depth,
+                listStyleType: styleType,
+                children: content.children ?? [{ text: '' }],
+            });
+        }
 
-        // Hoist nested list items up to the same level
         for (const nestedList of nested) {
-            result.push(...flattenListItems(nestedList.children ?? []));
+            result.push(...convertListToIndent(nestedList, depth + 1));
         }
     }
     return result;

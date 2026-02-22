@@ -75,15 +75,24 @@ export const commentPlugin = toTPlatePlugin<CommentConfig>(BaseCommentPlugin, {
       },
     }) => ({
       setDraft: () => {
+        if (!editor.selection) return;
+
         if (editor.api.isCollapsed()) {
-          editor.tf.select(editor.api.block()![1]);
+          const block = editor.api.block();
+          if (!block) return;
+          editor.tf.select(block[1]);
         }
 
-        setDraft();
+        const at = editor.selection;
+        if (!at) return;
+
+        setDraft({ at });
 
         editor.tf.collapse();
+
+        if (!editor.selection) return;
         setOption('activeId', getDraftCommentKey());
-        setOption('commentingBlock', editor.selection!.focus.path.slice(0, 1));
+        setOption('commentingBlock', editor.selection.focus.path.slice(0, 1));
       },
     })
   )

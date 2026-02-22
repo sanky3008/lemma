@@ -467,7 +467,7 @@ export function DocumentEditor({
             <PlateEditor
                 key={activeDoc.id}
                 docId={activeDoc.id}
-                initialContent={activeDoc.content}
+                initialContent={flattenNestedLists(activeDoc.content || [])}
                 onContentChange={handleContentChange}
                 title={localTitle}
                 setTitle={handleTitleChange}
