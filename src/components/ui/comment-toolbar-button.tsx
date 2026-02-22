@@ -17,6 +17,7 @@ export function CommentToolbarButton() {
       onClick={() => {
         editor.getTransforms(commentPlugin).comment.setDraft();
       }}
+      onMouseDown={(e) => e.preventDefault()}
       data-plate-prevent-overlay
       tooltip="Comment"
     >
