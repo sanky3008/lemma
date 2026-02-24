@@ -33,6 +33,7 @@ const toolIcons: Record<string, React.ReactNode> = {
   readPage: <FileText className="size-3.5" />,
   editDocument: <Pencil className="size-3.5" />,
   askQuestion: <HelpCircle className="size-3.5" />,
+  resolveComment: <Check className="size-3.5" />,
 };
 
 const toolLabels: Record<string, string> = {
@@ -41,6 +42,7 @@ const toolLabels: Record<string, string> = {
   readPage: 'Reading document',
   editDocument: 'Editing document',
   askQuestion: 'Asking question',
+  resolveComment: 'Resolving comment',
 };
 
 function isToolPart(part: any): boolean {

@@ -1,6 +1,7 @@
 "use client";
 
-import { useSignIn, useSignUp } from "@clerk/nextjs";
+import { useAuth, useSignIn, useSignUp } from "@clerk/nextjs";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
 const isDev = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith("pk_test_");
@@ -10,24 +11,30 @@ interface GoogleButtonProps {
 }
 
 export function GoogleButton({ mode }: GoogleButtonProps) {
+  const { isSignedIn } = useAuth();
   const signInCtx = useSignIn();
   const signUpCtx = useSignUp();
+  const router = useRouter();
 
   if (!isDev) return null;
 
   async function handleGoogle() {
+    if (isSignedIn) {
+      router.push("/app");
+      return;
+    }
     try {
       if (mode === "signIn" && signInCtx.signIn) {
         await signInCtx.signIn.authenticateWithRedirect({
           strategy: "oauth_google",
           redirectUrl: "/sso-callback",
-          redirectUrlComplete: "/",
+          redirectUrlComplete: "/app",
         });
       } else if (mode === "signUp" && signUpCtx.signUp) {
         await signUpCtx.signUp.authenticateWithRedirect({
           strategy: "oauth_google",
           redirectUrl: "/sso-callback",
-          redirectUrlComplete: "/",
+          redirectUrlComplete: "/app",
         });
       }
     } catch (err) {

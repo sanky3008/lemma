@@ -2,10 +2,6 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
-import { TooltipProvider } from "@/components/ui/tooltip";
-import { DocStoreProvider } from "@/lib/doc-store";
-import { ClerkProvider } from "@clerk/nextjs";
-import { ConvexClientProvider } from "./ConvexClientProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,18 +24,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
-      <html lang="en" suppressHydrationWarning className="h-full">
-        <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased h-full`}
-        >
-          <ConvexClientProvider>
-            <TooltipProvider>
-              <DocStoreProvider>{children}</DocStoreProvider>
-            </TooltipProvider>
-          </ConvexClientProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+    <html lang="en" suppressHydrationWarning className="h-full">
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased h-full`}
+      >
+        {children}
+      </body>
+    </html>
   );
 }

@@ -37,7 +37,7 @@ export default function SignInPage() {
 
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
-        router.push("/");
+        router.push("/app");
       } else if (result.status === "needs_second_factor") {
         // Trigger email OTP for the second factor
         await signIn.prepareSecondFactor({ strategy: "email_code" });
@@ -70,7 +70,7 @@ export default function SignInPage() {
 
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
-        router.push("/");
+        router.push("/app");
       } else {
         setError("Verification incomplete. Please try again.");
       }

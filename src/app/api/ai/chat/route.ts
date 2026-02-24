@@ -274,7 +274,13 @@ STEP LIMIT: You have a maximum of 40 steps total per response (across all tool c
           const { ConvexHttpClient } = await import('convex/browser');
           const { api } = await import('../../../../../convex/_generated/api');
 
+          const convexToken = context?.convexToken;
+          if (!convexToken) {
+            return { error: 'Authentication token not available. Cannot resolve comment.' };
+          }
+
           const client = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+          client.setAuth(convexToken);
 
           try {
             // commentId is the discussionId (matches the <comment id="..."> in the XML and Comments Detail)

@@ -71,7 +71,7 @@ export default function SignUpPage() {
 
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
-        router.push("/");
+        router.push("/app");
       } else {
         setError("Verification incomplete. Please try again.");
       }
