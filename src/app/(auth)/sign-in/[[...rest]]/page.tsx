@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useSignIn } from "@clerk/nextjs";
+import { useAuth, useSignIn } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ type Step = "credentials" | "second_factor";
 
 export default function SignInPage() {
   const { isLoaded, signIn, setActive } = useSignIn();
+  const { isSignedIn, isLoaded: isAuthLoaded } = useAuth();
   const router = useRouter();
 
   const [step, setStep] = React.useState<Step>("credentials");
@@ -22,9 +23,22 @@ export default function SignInPage() {
   const [error, setError] = React.useState("");
   const [loading, setLoading] = React.useState(false);
 
+  // If user already has an active session, skip the sign-in form entirely.
+  React.useEffect(() => {
+    if (isAuthLoaded && isSignedIn) {
+      router.replace("/app");
+    }
+  }, [isAuthLoaded, isSignedIn, router]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!isLoaded) return;
+
+    // Defensive: if a session somehow already exists, just route through.
+    if (isSignedIn) {
+      router.replace("/app");
+      return;
+    }
 
     setLoading(true);
     setError("");
@@ -46,7 +60,14 @@ export default function SignInPage() {
         setError("Unexpected sign-in state. Please try again.");
       }
     } catch (err: unknown) {
-      const clerkError = err as { errors?: { message: string }[] };
+      const clerkError = err as {
+        errors?: { code?: string; message: string }[];
+      };
+      // If Clerk says a session already exists, route to the app instead of erroring out.
+      if (clerkError.errors?.some((e) => e.code === "session_exists")) {
+        router.replace("/app");
+        return;
+      }
       setError(
         clerkError.errors?.[0]?.message ?? "Something went wrong. Please try again."
       );
